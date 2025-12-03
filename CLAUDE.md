@@ -41,7 +41,7 @@ uv sync --group docs
 # Build documentation
 uv run mkdocs build
 
-# Serve docs locally (with live reload)
+# Serve docs locally (with live reload, runs on port 8001)
 uv run mkdocs serve
 ```
 
