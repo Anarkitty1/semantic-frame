@@ -208,7 +208,10 @@ Run the MCP server:
 mcp run semantic_frame.integrations.mcp:mcp
 ```
 
-Exposes `describe_data` tool for MCP clients (Claude Desktop, ElizaOS).
+Exposes `describe_data` tool for MCP clients like:
+- **ElizaOS**: TypeScript-based agent framework
+- **Claude Desktop**: Anthropic's desktop app
+- Any MCP-compatible client
 
 ## Use Cases
 
@@ -278,6 +281,8 @@ Full analysis result with:
 - `anomalies`: List of AnomalyInfo objects
 - `seasonality`: Optional SeasonalityState
 - `distribution`: Optional DistributionShape
+- `step_change`: Optional StructuralChange (STEP_UP, STEP_DOWN, NONE)
+- `step_change_index`: Optional int (index where step change occurred)
 - `profile`: SeriesProfile with statistics
 - `compression_ratio`: Token reduction ratio
 

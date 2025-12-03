@@ -21,7 +21,7 @@ uv run pytest
 uv run pytest tests/test_analyzers.py
 
 # Run single test
-uv run pytest tests/test_analyzers.py::test_classify_trend -v
+uv run pytest tests/test_analyzers.py::TestClassifyTrend::test_rising_sharp -v
 
 # Type checking
 uv run mypy semantic_frame
@@ -34,6 +34,15 @@ uv run ruff format semantic_frame
 
 # Run pre-commit hooks manually
 uv run pre-commit run --all-files
+
+# Install docs dependencies
+uv sync --group docs
+
+# Build documentation
+uv run mkdocs build
+
+# Serve docs locally (with live reload)
+uv run mkdocs serve
 ```
 
 ## Pre-commit Hooks
@@ -91,7 +100,7 @@ semantic_frame/
 1. **main.py**: Entry point. Converts any input (Pandas/Polars/NumPy/list) to NumPy array via `_to_numpy()`
 2. **translator.py**: `analyze_series()` runs full pipeline:
    - Builds `SeriesProfile` (basic stats: mean, median, std, min, max)
-   - Runs analyzers: trend, volatility, anomalies, seasonality, distribution
+   - Runs analyzers: trend, volatility, anomalies, seasonality, distribution, step changes
    - Generates narrative via `narrators/time_series.py`
    - Returns `SemanticResult` with compression ratio
 3. **analyzers.py**: Pure math functions, deterministic, no external calls:
@@ -101,6 +110,7 @@ semantic_frame/
    - `detect_anomalies()` → adaptive Z-score/IQR based on sample size
    - `calc_seasonality()` → autocorrelation analysis
    - `calc_distribution_shape()` → skewness/kurtosis classification
+   - `detect_step_changes()` → sliding window baseline shift detection
 4. **correlations.py**: Cross-column relationship analysis:
    - `classify_correlation()` → maps r-value to `CorrelationState` enum
    - `calc_correlation_matrix()` → pairwise Pearson/Spearman correlations
