@@ -47,7 +47,9 @@ uv run pre-commit install
 Hooks run automatically on `git commit`:
 - **trailing-whitespace**: Remove trailing whitespace
 - **end-of-file-fixer**: Ensure files end with newline
+- **check-yaml**: Validate YAML syntax
 - **check-added-large-files**: Prevent large file commits
+- **check-merge-conflict**: Prevent committing conflict markers
 - **ruff**: Linting with auto-fix
 - **ruff-format**: Code formatting
 - **mypy**: Type checking (excludes tests/)
@@ -66,7 +68,7 @@ Input (NumPy/Pandas/Polars) → Profiler → Classifier → Narrator → Output 
 semantic_frame/
 ├── main.py              # Public API: describe_series(), describe_dataframe()
 ├── core/
-│   ├── enums.py         # Semantic vocabulary (TrendState, VolatilityState, CorrelationState, etc.)
+│   ├── enums.py         # Semantic vocabulary (TrendState, VolatilityState, StructuralChange, etc.)
 │   ├── analyzers.py     # Math engine (NumPy/scipy stats, no LLMs)
 │   ├── correlations.py  # Cross-column correlation analysis (Pearson/Spearman)
 │   └── translator.py    # Orchestrates pipeline: profile → analyze → narrate
@@ -78,8 +80,10 @@ semantic_frame/
 │   ├── json_schema.py   # Pydantic models (SemanticResult, AnomalyInfo, etc.)
 │   └── llm_templates.py # LangChain/agent integration helpers
 └── integrations/
+    ├── anthropic.py     # Native Anthropic Claude tool use (optional dep)
     ├── langchain.py     # LangChain BaseTool wrapper (optional dep)
-    └── crewai.py        # CrewAI tool decorator wrapper (optional dep)
+    ├── crewai.py        # CrewAI tool decorator wrapper (optional dep)
+    └── mcp.py           # Model Context Protocol server (optional dep)
 ```
 
 ### Data Flow
@@ -119,8 +123,11 @@ Tests are organized to mirror the module structure:
 - `test_translator.py` - Pipeline integration tests
 - `test_narrators.py` - Narrative generation tests
 - `test_integration.py` - End-to-end with various data types
+- `test_advanced_analyzers.py` - Step change detection and advanced analysis tests
+- `test_anthropic_integration.py` - Anthropic native tool use tests
 - `test_langchain_integration.py` - LangChain tool wrapper tests
 - `test_crewai_integration.py` - CrewAI tool wrapper tests
+- `test_mcp_integration.py` - MCP server integration tests
 
 When adding new analysis features:
 1. Add enum to `core/enums.py` with threshold docstring
@@ -132,13 +139,19 @@ When adding new analysis features:
 ## Framework Integrations
 
 Optional dependencies for agent frameworks:
+- **Anthropic**: `pip install semantic-frame[anthropic]` → `get_anthropic_tool()`, `handle_tool_call()` in `integrations/anthropic.py`
+  - Native Claude tool use with Anthropic SDK
+  - Provides tool schema and handler for messages API
 - **LangChain**: `pip install semantic-frame[langchain]` → `get_semantic_tool()` in `integrations/langchain.py`
 - **CrewAI**: `pip install semantic-frame[crewai]` → `get_crewai_tool()` in `integrations/crewai.py`
+- **MCP**: `pip install semantic-frame[mcp]` → FastMCP server in `integrations/mcp.py`
+  - Run: `mcp run semantic_frame.integrations.mcp:mcp`
+  - Exposes `describe_data` tool for MCP clients (Claude Desktop, ElizaOS)
 
-Both integrations use lazy imports and provide helpful errors if dependencies are missing.
+All integrations use lazy imports and provide helpful errors if dependencies are missing.
 
 ## Dependencies
 
 Core: numpy, pandas, polars, scipy, pydantic
-Dev: pytest, pytest-cov, mypy, ruff, pre-commit
-Optional: langchain, crewai (for agent framework integrations)
+Dev: pytest, pytest-cov, pytest-asyncio, mypy, ruff, pre-commit
+Optional: anthropic, langchain, crewai, mcp (for agent framework integrations)

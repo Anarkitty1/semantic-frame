@@ -35,6 +35,9 @@ dev = [
     "mypy>=1.0",
     "ruff>=0.1",
 ]
+anthropic = [
+    "anthropic>=0.20",
+]
 langchain = [
     "langchain>=0.1",
 ]
@@ -45,6 +48,7 @@ mcp = [
     "mcp>=1.0.0",
 ]
 all = [
+    "anthropic>=0.20",
     "langchain>=0.1",
     "crewai>=0.1",
     "mcp>=1.0.0",

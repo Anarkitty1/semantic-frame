@@ -107,7 +107,8 @@ result = describe_series(data, output="json")
 | **Volatility** | Coefficient of variation | COMPRESSED, STABLE, MODERATE, EXPANDING, EXTREME |
 | **Anomalies** | Z-score / IQR adaptive | Index, value, z-score for each outlier |
 | **Seasonality** | Autocorrelation | NONE, WEAK, MODERATE, STRONG |
-| **Distribution** | Skewness + Kurtosis | NORMAL, LEFT_SKEWED, RIGHT_SKEWED, BIMODAL |
+| **Distribution** | Skewness + Kurtosis | NORMAL, LEFT_SKEWED, RIGHT_SKEWED, BIMODAL, UNIFORM |
+| **Step Change** | Baseline shift detection | NONE, STEP_UP, STEP_DOWN |
 | **Data Quality** | Missing value % | PRISTINE, GOOD, SPARSE, FRAGMENTED |
 
 ## LLM Integration
@@ -141,7 +142,83 @@ context = create_agent_context(results)
 # Combined narrative for all columns with attention flags
 ```
 
+## Framework Integrations
+
+### Anthropic Claude (Native Tool Use)
+
+```bash
+pip install semantic-frame[anthropic]
+```
+
+```python
+import anthropic
+from semantic_frame.integrations.anthropic import get_anthropic_tool, handle_tool_call
+
+client = anthropic.Anthropic()
+tool = get_anthropic_tool()
+
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    tools=[tool],
+    messages=[{"role": "user", "content": "Analyze this sales data: [100, 120, 115, 500, 118]"}]
+)
+
+# Handle tool use in response
+for block in response.content:
+    if block.type == "tool_use" and block.name == "semantic_analysis":
+        result = handle_tool_call(block.input)
+        print(result)
+```
+
+### LangChain
+
+```bash
+pip install semantic-frame[langchain]
+```
+
+```python
+from semantic_frame.integrations.langchain import get_semantic_tool
+
+tool = get_semantic_tool()
+# Use as a LangChain BaseTool in your agent
+```
+
+### CrewAI
+
+```bash
+pip install semantic-frame[crewai]
+```
+
+```python
+from semantic_frame.integrations.crewai import get_crewai_tool
+
+tool = get_crewai_tool()
+# Use with CrewAI agents
+```
+
+### MCP (Model Context Protocol)
+
+```bash
+pip install semantic-frame[mcp]
+```
+
+Run the MCP server:
+```bash
+mcp run semantic_frame.integrations.mcp:mcp
+```
+
+Exposes `describe_data` tool for MCP clients (Claude Desktop, ElizaOS).
+
 ## Use Cases
+
+### Crypto Trading
+```python
+btc_prices = pd.Series(hourly_btc_prices)
+insight = describe_series(btc_prices, context="BTC/USD Hourly")
+# "The BTC/USD Hourly data shows a rapidly rising pattern with extreme variability.
+#  Step up detected at index 142. 2 anomalies detected at indices 89, 203."
+```
 
 ### DevOps Monitoring
 ```python
