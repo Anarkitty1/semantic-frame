@@ -1,6 +1,6 @@
 # Battle Plan: Semantic-Frame
 
-## Status: MVP COMPLETE
+## Status: ENHANCEMENT PHASE COMPLETE
 
 ---
 
@@ -145,15 +145,15 @@ Compression: 99.9% token reduction
 - [x] Analyzes all numeric columns
 - [x] Context propagation to columns
 - [x] Multi-column agent context generation
-- [ ] Column correlation analysis (future enhancement)
+- [x] Column correlation analysis
 - [x] Ready for PyPI release (`pip install semantic-frame`)
 
-### Milestone 3: The "Agent Kit" (Month 2) [PARTIAL]
+### Milestone 3: The "Agent Kit" (Month 2) [COMPLETE]
 
 - [x] LLM template helpers (`format_for_system_prompt`, `format_for_langchain`)
 - [x] Agent context creation (`create_agent_context`)
-- [ ] LangChain tool wrapper (future)
-- [ ] CrewAI integration (future)
+- [x] LangChain tool wrapper (`semantic_frame/integrations/langchain.py`)
+- [x] CrewAI integration (`semantic_frame/integrations/crewai.py`)
 - [ ] ElizaOS integration (future)
 
 ---
@@ -170,6 +170,83 @@ Compression: 99.9% token reduction
 
 ---
 
+## 9. Completed Enhancements
+
+### Milestone 2 Completion: Cross-Column Correlation [COMPLETE]
+
+**Goal:** Detect relationships like "Sales UP, Inventory DOWN"
+
+**Completed Tasks:**
+
+1. **[x] New Enum: `CorrelationState`** (`semantic_frame/core/enums.py`)
+   - STRONG_POSITIVE, MODERATE_POSITIVE, WEAK, MODERATE_NEGATIVE, STRONG_NEGATIVE
+
+2. **[x] New Module: `semantic_frame/core/correlations.py`**
+   - `calc_correlation_matrix(df)`: Pearson/Spearman correlation
+   - `identify_significant_correlations(matrix, threshold=0.5)`: Filter meaningful pairs
+   - `classify_correlation(r_value)`: Map to CorrelationState enum
+
+3. **[x] New Pydantic Model: `CorrelationInsight`** (`semantic_frame/interfaces/json_schema.py`)
+
+4. **[x] New Pydantic Model: `DataFrameResult`** (`semantic_frame/interfaces/json_schema.py`)
+
+5. **[x] Updated `describe_dataframe()`** to return `DataFrameResult`
+
+6. **[x] New Narrator: `semantic_frame/narrators/correlation.py`**
+
+7. **[x] Tests: `tests/test_correlations.py`** (18 tests)
+
+---
+
+### Milestone 3 Completion: Framework Integrations [COMPLETE]
+
+**Goal:** "Add Semantic Memory to your Agent in 1 line of code"
+
+**Completed Tasks:**
+
+1. **[x] LangChain Tool Wrapper** (`semantic_frame/integrations/langchain.py`)
+   - `SemanticAnalysisTool` class
+   - `get_semantic_tool()` factory function
+
+2. **[x] CrewAI Tool** (`semantic_frame/integrations/crewai.py`)
+   - `semantic_analysis()` function
+   - `get_crewai_tool()` factory function
+
+3. **[x] Optional Dependencies** in `pyproject.toml`
+   ```bash
+   pip install semantic-frame[langchain]
+   pip install semantic-frame[crewai]
+   pip install semantic-frame[all]
+   ```
+
+4. **[x] Integration Tests**
+   - `tests/test_langchain_integration.py` (12 tests)
+   - `tests/test_crewai_integration.py` (8 tests)
+
+5. **[x] LICENSE file** (MIT)
+
+---
+
+## 10. Future Enhancements
+
+| Priority | Task | Status |
+|----------|------|--------|
+| 1 | ElizaOS integration | Not Started |
+| 2 | Update README with integration examples | Not Started |
+| 3 | Add integration guide to docs/ | Not Started |
+| 4 | Additional framework integrations | Not Started |
+
+---
+
+## Test Results
+
+- **176 tests passing** (3 skipped - optional deps not installed)
+- **89% code coverage**
+- **All linting passes** (ruff)
+- **Package builds successfully**
+
+---
+
 **You have built the Compression Algorithm for Intelligence.**
 
-**Status: MVP SHIPPED**
+**Status: FEATURE COMPLETE**

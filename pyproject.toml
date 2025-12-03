@@ -35,6 +35,16 @@ dev = [
     "mypy>=1.0",
     "ruff>=0.1",
 ]
+langchain = [
+    "langchain>=0.1",
+]
+crewai = [
+    "crewai>=0.1",
+]
+all = [
+    "langchain>=0.1",
+    "crewai>=0.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/yourusername/semantic-frame"

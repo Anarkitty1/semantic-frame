@@ -19,8 +19,20 @@ from typing import TYPE_CHECKING, Any, Literal, Union, overload
 
 import numpy as np
 
+from semantic_frame.core.correlations import (
+    calc_correlation_matrix,
+    identify_significant_correlations,
+)
 from semantic_frame.core.translator import analyze_series
-from semantic_frame.interfaces.json_schema import SemanticResult
+from semantic_frame.interfaces.json_schema import (
+    CorrelationInsight,
+    DataFrameResult,
+    SemanticResult,
+)
+from semantic_frame.narrators.correlation import (
+    generate_correlation_narrative,
+    generate_dataframe_summary,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -215,61 +227,106 @@ def describe_series(
 def describe_dataframe(
     df: DataFrameLike,
     context: str | None = None,
-) -> dict[str, SemanticResult]:
-    """Analyze all numeric columns in a DataFrame.
+    correlation_threshold: float = 0.5,
+) -> DataFrameResult:
+    """Analyze all numeric columns in a DataFrame with correlation analysis.
 
-    Runs describe_series on each numeric column and returns a dict
-    mapping column names to their SemanticResult.
+    Runs describe_series on each numeric column and detects cross-column
+    correlations to identify relationships like "Sales UP, Inventory DOWN".
 
     Args:
         df: Input DataFrame (pandas or polars).
         context: Optional context prefix. Column names will be appended.
+        correlation_threshold: Minimum |r| for correlation reporting (default 0.5).
+            Only correlations with absolute value >= threshold are included.
 
     Returns:
-        Dict mapping column names to SemanticResult objects.
+        DataFrameResult with per-column analysis and correlation insights.
 
     Examples:
         >>> import pandas as pd
         >>> df = pd.DataFrame({
-        ...     'cpu': [40, 42, 41, 95, 40],
-        ...     'memory': [60, 61, 60, 60, 61],
+        ...     'sales': [100, 200, 300, 400, 500],
+        ...     'inventory': [500, 400, 300, 200, 100],
         ... })
-        >>> results = describe_dataframe(df, context="Server Metrics")
-        >>> print(results['cpu'].narrative)
-        'The Server Metrics - cpu data shows a flat/stationary pattern...'
+        >>> result = describe_dataframe(df, context="Retail Metrics")
+        >>> print(result.summary_narrative)
+        'Analyzed 2 numeric column(s) in Retail Metrics...'
+        >>> for corr in result.correlations:
+        ...     print(corr.narrative)
+        'inventory and sales are strongly inverse (r=-1.00)'
     """
-    results: dict[str, SemanticResult] = {}
+    column_results: dict[str, SemanticResult] = {}
+    values_dict: dict[str, np.ndarray] = {}
 
     # Detect Polars vs Pandas
     module_name = type(df).__module__
 
     if "polars" in module_name:
         # Polars DataFrame
-
         for col_name in df.columns:
             dtype = df[col_name].dtype
             # Check if numeric (int, float types)
             if dtype.is_numeric():
                 col_context = f"{context} - {col_name}" if context else col_name
+                values = df[col_name].to_numpy()
+                values_dict[col_name] = values.astype(float)
                 result = describe_series(
                     df[col_name],
                     context=col_context,
                     output="full",
                 )
-                results[col_name] = result  # type: ignore
+                column_results[col_name] = result  # type: ignore
     else:
         # Pandas DataFrame
         numeric_cols = df.select_dtypes(include=[np.number]).columns  # type: ignore
         for col_name in numeric_cols:
             col_context = f"{context} - {col_name}" if context else str(col_name)
+            values = df[col_name].to_numpy()  # type: ignore
+            values_dict[str(col_name)] = values.astype(float)
             result = describe_series(
                 df[col_name],  # type: ignore
                 context=col_context,
                 output="full",
             )
-            results[str(col_name)] = result  # type: ignore
+            column_results[str(col_name)] = result  # type: ignore
 
-    return results
+    # Calculate correlations
+    correlation_matrix = calc_correlation_matrix(values_dict)
+    significant = identify_significant_correlations(
+        correlation_matrix, threshold=correlation_threshold
+    )
+
+    # Build CorrelationInsight objects
+    correlation_insights: list[CorrelationInsight] = []
+    key_insights: list[str] = []
+
+    for col_a, col_b, r, state in significant:
+        narrative = generate_correlation_narrative(col_a, col_b, r, state)
+        correlation_insights.append(
+            CorrelationInsight(
+                column_a=col_a,
+                column_b=col_b,
+                correlation=r,
+                state=state,
+                narrative=narrative,
+            )
+        )
+        key_insights.append(narrative)
+
+    # Generate summary narrative
+    summary = generate_dataframe_summary(
+        column_count=len(column_results),
+        significant_correlations=len(correlation_insights),
+        key_insights=key_insights,
+        context=context,
+    )
+
+    return DataFrameResult(
+        columns=column_results,
+        correlations=tuple(correlation_insights),
+        summary_narrative=summary,
+    )
 
 
 def compression_stats(original_data: ArrayLike, result: SemanticResult) -> dict[str, Any]:

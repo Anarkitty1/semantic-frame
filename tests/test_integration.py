@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 
 from semantic_frame import describe_dataframe, describe_series
-from semantic_frame.interfaces.json_schema import SemanticResult
+from semantic_frame.interfaces.json_schema import DataFrameResult, SemanticResult
 from semantic_frame.interfaces.llm_templates import (
     create_agent_context,
     format_for_context,
@@ -130,14 +130,15 @@ class TestDescribeDataframe:
             }
         )
 
-        results = describe_dataframe(df, context="Server Metrics")
+        result = describe_dataframe(df, context="Server Metrics")
 
-        assert "cpu" in results
-        assert "memory" in results
-        assert "name" not in results  # Should skip non-numeric
+        assert isinstance(result, DataFrameResult)
+        assert "cpu" in result.columns
+        assert "memory" in result.columns
+        assert "name" not in result.columns  # Should skip non-numeric
 
-        assert isinstance(results["cpu"], SemanticResult)
-        assert isinstance(results["memory"], SemanticResult)
+        assert isinstance(result.columns["cpu"], SemanticResult)
+        assert isinstance(result.columns["memory"], SemanticResult)
 
     def test_polars_dataframe(self):
         """Should work with polars DataFrame."""
@@ -148,10 +149,11 @@ class TestDescribeDataframe:
             }
         )
 
-        results = describe_dataframe(df, context="Sensor Data")
+        result = describe_dataframe(df, context="Sensor Data")
 
-        assert "temperature" in results
-        assert "humidity" in results
+        assert isinstance(result, DataFrameResult)
+        assert "temperature" in result.columns
+        assert "humidity" in result.columns
 
     def test_context_propagation(self):
         """Context should be propagated to each column."""
@@ -162,10 +164,138 @@ class TestDescribeDataframe:
             }
         )
 
-        results = describe_dataframe(df, context="Test")
+        result = describe_dataframe(df, context="Test")
 
-        assert "Test - col1" in results["col1"].context
-        assert "Test - col2" in results["col2"].context
+        assert "Test - col1" in result.columns["col1"].context
+        assert "Test - col2" in result.columns["col2"].context
+
+    def test_returns_dataframe_result(self):
+        """Should return DataFrameResult type."""
+        df = pd.DataFrame(
+            {
+                "a": [1, 2, 3, 4, 5],
+                "b": [2, 4, 6, 8, 10],
+            }
+        )
+        result = describe_dataframe(df)
+
+        assert isinstance(result, DataFrameResult)
+        assert hasattr(result, "columns")
+        assert hasattr(result, "correlations")
+        assert hasattr(result, "summary_narrative")
+
+
+class TestDataframeCorrelations:
+    """Integration tests for describe_dataframe correlation analysis."""
+
+    def test_detects_strong_positive_correlation(self):
+        """Should detect strong positive correlation."""
+        df = pd.DataFrame(
+            {
+                "sales": [100, 200, 300, 400, 500],
+                "revenue": [1000, 2000, 3000, 4000, 5000],
+            }
+        )
+        result = describe_dataframe(df)
+
+        assert len(result.correlations) >= 1
+        assert result.correlations[0].state.value == "strongly correlated"
+        assert result.correlations[0].correlation > 0.99
+
+    def test_detects_inverse_correlation(self):
+        """Should detect inverse correlation (Sales UP, Inventory DOWN)."""
+        df = pd.DataFrame(
+            {
+                "sales": [100, 200, 300, 400, 500],
+                "inventory": [500, 400, 300, 200, 100],
+            }
+        )
+        result = describe_dataframe(df)
+
+        assert len(result.correlations) >= 1
+        assert "inverse" in result.correlations[0].state.value
+        assert result.correlations[0].correlation < -0.99
+
+    def test_correlation_threshold(self):
+        """Should respect correlation threshold parameter."""
+        np.random.seed(42)
+        df = pd.DataFrame(
+            {
+                "a": np.random.randn(100),
+                "b": np.random.randn(100),
+            }
+        )
+
+        # Default threshold (0.5) - random data should have weak correlation
+        result = describe_dataframe(df)
+        assert len(result.correlations) == 0
+
+        # Very low threshold - should find the weak correlation
+        result_low = describe_dataframe(df, correlation_threshold=0.0)
+        assert len(result_low.correlations) >= 1
+
+    def test_summary_narrative_present(self):
+        """Should generate summary narrative."""
+        df = pd.DataFrame(
+            {
+                "a": [1, 2, 3],
+                "b": [4, 5, 6],
+            }
+        )
+        result = describe_dataframe(df)
+
+        assert len(result.summary_narrative) > 0
+        assert "column" in result.summary_narrative.lower()
+
+    def test_summary_mentions_correlations(self):
+        """Summary should mention significant correlations."""
+        df = pd.DataFrame(
+            {
+                "x": [1, 2, 3, 4, 5],
+                "y": [2, 4, 6, 8, 10],
+            }
+        )
+        result = describe_dataframe(df)
+
+        assert "correlation" in result.summary_narrative.lower()
+        assert "1" in result.summary_narrative  # Should mention count
+
+    def test_no_correlations_for_single_column(self):
+        """Single column should have no correlations."""
+        df = pd.DataFrame({"only_col": [1, 2, 3, 4, 5]})
+        result = describe_dataframe(df)
+
+        assert len(result.correlations) == 0
+        assert "no strong correlation" in result.summary_narrative.lower()
+
+    def test_correlation_narrative_included(self):
+        """Each correlation should have a narrative."""
+        df = pd.DataFrame(
+            {
+                "a": [1, 2, 3, 4, 5],
+                "b": [2, 4, 6, 8, 10],
+            }
+        )
+        result = describe_dataframe(df)
+
+        if result.correlations:
+            assert len(result.correlations[0].narrative) > 0
+            assert "a" in result.correlations[0].narrative
+            assert "b" in result.correlations[0].narrative
+
+    def test_polars_correlation(self):
+        """Correlation analysis should work with polars DataFrame."""
+        df = pl.DataFrame(
+            {
+                "metric_a": [10, 20, 30, 40, 50],
+                "metric_b": [50, 40, 30, 20, 10],
+            }
+        )
+        result = describe_dataframe(df)
+
+        assert isinstance(result, DataFrameResult)
+        assert len(result.correlations) >= 1
+        assert result.correlations[0].correlation < -0.99
 
 
 class TestCompressionStats:
@@ -227,8 +357,8 @@ class TestLLMTemplates:
             }
         )
 
-        results = describe_dataframe(df)
-        context = create_agent_context(results)
+        result = describe_dataframe(df)
+        context = create_agent_context(result.columns)
 
         assert "MULTI-COLUMN" in context
         assert "metric1" in context
@@ -398,11 +528,11 @@ class TestRealWorldScenarios:
             }
         )
 
-        results = describe_dataframe(df, context="Server Health")
+        result = describe_dataframe(df, context="Server Health")
 
         # All metrics should be analyzed
-        assert len(results) == 4
+        assert len(result.columns) == 4
 
-        # Should be able to create combined context
-        context = create_agent_context(results)
+        # Should be able to create combined context from columns dict
+        context = create_agent_context(result.columns)
         assert "MULTI-COLUMN" in context

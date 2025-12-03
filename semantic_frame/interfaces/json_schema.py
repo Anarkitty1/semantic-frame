@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from semantic_frame.core.enums import (
     AnomalyState,
+    CorrelationState,
     DataQuality,
     DistributionShape,
     SeasonalityState,
@@ -129,6 +130,71 @@ class SemanticResult(BaseModel):
     def to_prompt(self) -> str:
         """Format result as an LLM-ready prompt injection."""
         return f"DATA CONTEXT: {self.narrative}"
+
+    def to_json_str(self) -> str:
+        """Serialize to JSON string for API responses."""
+        return self.model_dump_json(indent=2, by_alias=True)
+
+
+class CorrelationInsight(BaseModel):
+    """Insight about correlation between two columns.
+
+    Represents a significant relationship detected between two
+    columns in a DataFrame analysis.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    column_a: str = Field(min_length=1, description="First column name")
+    column_b: str = Field(min_length=1, description="Second column name")
+    correlation: float = Field(
+        ge=-1.0,
+        le=1.0,
+        description="Pearson/Spearman correlation coefficient",
+    )
+    state: CorrelationState = Field(description="Classified correlation strength")
+    narrative: str = Field(
+        min_length=1,
+        description="Natural language description of the relationship",
+    )
+
+
+# Maximum number of correlations to store in results
+MAX_CORRELATIONS = 10
+
+
+class DataFrameResult(BaseModel):
+    """Complete semantic analysis result for a DataFrame.
+
+    Contains per-column analysis plus cross-column correlation insights.
+    This is the primary output model for describe_dataframe().
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    columns: dict[str, SemanticResult] = Field(
+        description="Per-column analysis results, keyed by column name",
+    )
+    correlations: tuple[CorrelationInsight, ...] = Field(
+        default_factory=tuple,
+        description=f"Significant cross-column correlations (max {MAX_CORRELATIONS})",
+    )
+    summary_narrative: str = Field(
+        min_length=1,
+        description="Overall DataFrame summary narrative",
+    )
+
+    @field_validator("correlations", mode="before")
+    @classmethod
+    def convert_correlations_to_tuple(
+        cls, v: list[CorrelationInsight] | tuple[CorrelationInsight, ...]
+    ) -> tuple[CorrelationInsight, ...]:
+        """Convert list to tuple and enforce max length."""
+        if isinstance(v, list):
+            v = tuple(v)
+        if len(v) > MAX_CORRELATIONS:
+            v = v[:MAX_CORRELATIONS]
+        return v
 
     def to_json_str(self) -> str:
         """Serialize to JSON string for API responses."""

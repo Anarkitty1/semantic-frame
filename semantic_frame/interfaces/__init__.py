@@ -2,6 +2,8 @@
 
 from semantic_frame.interfaces.json_schema import (
     AnomalyInfo,
+    CorrelationInsight,
+    DataFrameResult,
     SemanticResult,
     SeriesProfile,
 )
@@ -15,6 +17,8 @@ __all__ = [
     "AnomalyInfo",
     "SeriesProfile",
     "SemanticResult",
+    "CorrelationInsight",
+    "DataFrameResult",
     "get_analysis_prompt",
     "format_for_system_prompt",
     "format_for_langchain",

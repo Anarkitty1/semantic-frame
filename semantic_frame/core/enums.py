@@ -112,3 +112,21 @@ class DistributionShape(str, Enum):
     RIGHT_SKEWED = "right-skewed"
     BIMODAL = "bimodal"
     UNIFORM = "uniformly distributed"
+
+
+class CorrelationState(str, Enum):
+    """Classification of correlation strength between two variables.
+
+    Thresholds (Pearson r):
+        - STRONG_POSITIVE: r > 0.7
+        - MODERATE_POSITIVE: 0.4 < r <= 0.7
+        - WEAK: |r| <= 0.4
+        - MODERATE_NEGATIVE: -0.7 <= r < -0.4
+        - STRONG_NEGATIVE: r < -0.7
+    """
+
+    STRONG_POSITIVE = "strongly correlated"
+    MODERATE_POSITIVE = "moderately correlated"
+    WEAK = "weakly related"
+    MODERATE_NEGATIVE = "inversely related"
+    STRONG_NEGATIVE = "strongly inverse"
