@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Type alias for supported input types
-ArrayLike = Union["pd.Series", "np.ndarray", "pl.Series", list]
+ArrayLike = Union["pd.Series", "np.ndarray", "pl.Series", "list[float]"]
 DataFrameLike = Union["pd.DataFrame", "pl.DataFrame"]
 
 # Valid output formats
@@ -66,11 +66,11 @@ def _to_numpy(data: ArrayLike) -> np.ndarray:
     # Python list
     if isinstance(data, list):
         try:
-            return np.array(data, dtype=float)
+            arr: np.ndarray = np.array(data, dtype=float)
+            return arr
         except (TypeError, ValueError) as e:
             raise TypeError(
-                f"List contains non-numeric values: {e}. "
-                "Expected a list of numbers."
+                f"List contains non-numeric values: {e}. " "Expected a list of numbers."
             ) from e
 
     # Check for Pandas Series
@@ -108,7 +108,8 @@ def _to_numpy(data: ArrayLike) -> np.ndarray:
 
     # Fallback: try array protocol
     try:
-        return np.asarray(data, dtype=float)
+        fallback_arr: np.ndarray = np.asarray(data, dtype=float)
+        return fallback_arr
     except (TypeError, ValueError) as e:
         raise TypeError(
             f"Unsupported data type: {type(data).__name__} "
@@ -193,8 +194,7 @@ def describe_series(
     # Validate output format
     if output not in VALID_OUTPUT_FORMATS:
         raise ValueError(
-            f"Invalid output format: {output!r}. "
-            f"Expected one of: {VALID_OUTPUT_FORMATS}"
+            f"Invalid output format: {output!r}. " f"Expected one of: {VALID_OUTPUT_FORMATS}"
         )
 
     # Convert to numpy
@@ -241,12 +241,10 @@ def describe_dataframe(
     results: dict[str, SemanticResult] = {}
 
     # Detect Polars vs Pandas
-    type_name = type(df).__name__
     module_name = type(df).__module__
 
     if "polars" in module_name:
         # Polars DataFrame
-        import polars as pl
 
         for col_name in df.columns:
             dtype = df[col_name].dtype
@@ -274,7 +272,7 @@ def describe_dataframe(
     return results
 
 
-def compression_stats(original_data: ArrayLike, result: SemanticResult) -> dict:
+def compression_stats(original_data: ArrayLike, result: SemanticResult) -> dict[str, Any]:
     """Calculate detailed compression statistics.
 
     Args:

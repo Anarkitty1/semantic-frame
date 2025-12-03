@@ -131,7 +131,7 @@ def _build_profile(values: np.ndarray, clean_values: np.ndarray) -> SeriesProfil
         SeriesProfile with computed statistics.
     """
     # Count both NaN and Inf as missing/invalid
-    invalid_count = np.sum(np.isnan(values) | np.isinf(values))
+    invalid_count: int = int(np.sum(np.isnan(values) | np.isinf(values)))
     missing_pct = float(invalid_count / len(values) * 100)
 
     return SeriesProfile(

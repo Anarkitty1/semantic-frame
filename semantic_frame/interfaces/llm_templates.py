@@ -7,11 +7,13 @@ like LangChain and direct API usage.
 
 from __future__ import annotations
 
+from typing import Any
+
 from semantic_frame.interfaces.json_schema import SemanticResult
 
-
 # System prompt templates
-SYSTEM_PROMPT_TEMPLATE = """You are analyzing data that has been pre-processed by a semantic analyzer.
+SYSTEM_PROMPT_TEMPLATE = """\
+You are analyzing data that has been pre-processed by a semantic analyzer.
 
 DATA CONTEXT:
 {narrative}
@@ -28,12 +30,13 @@ Use this context to inform your response. The analysis is mathematically verifie
 CONCISE_CONTEXT_TEMPLATE = """[DATA: {context}] {narrative}"""
 
 
-LANGCHAIN_TOOL_DESCRIPTION = """Semantic data analysis tool that converts numerical data into natural language insights.
+LANGCHAIN_TOOL_DESCRIPTION = """\
+Semantic data analysis tool that converts numerical data into natural language insights.
 
 Input: Raw numerical data (CSV, JSON array, or description of data source)
 Output: Semantic description including trend, volatility, anomalies, and data quality.
 
-Use this tool when you need to understand patterns in numerical data without processing raw numbers yourself."""
+Use this tool to understand patterns in numerical data without processing raw numbers."""
 
 
 def format_for_system_prompt(result: SemanticResult) -> str:
@@ -76,7 +79,7 @@ def format_for_context(result: SemanticResult) -> str:
     )
 
 
-def format_for_langchain(result: SemanticResult) -> dict:
+def format_for_langchain(result: SemanticResult) -> dict[str, Any]:
     """Format SemanticResult for LangChain tool output.
 
     Creates a dict structure suitable for LangChain tool returns,

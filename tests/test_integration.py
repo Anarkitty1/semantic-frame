@@ -122,11 +122,13 @@ class TestDescribeDataframe:
 
     def test_pandas_dataframe(self):
         """Should analyze all numeric columns in pandas DataFrame."""
-        df = pd.DataFrame({
-            "cpu": [40, 42, 41, 95, 40, 41],
-            "memory": [60, 61, 60, 60, 61, 60],
-            "name": ["a", "b", "c", "d", "e", "f"],  # Non-numeric
-        })
+        df = pd.DataFrame(
+            {
+                "cpu": [40, 42, 41, 95, 40, 41],
+                "memory": [60, 61, 60, 60, 61, 60],
+                "name": ["a", "b", "c", "d", "e", "f"],  # Non-numeric
+            }
+        )
 
         results = describe_dataframe(df, context="Server Metrics")
 
@@ -139,10 +141,12 @@ class TestDescribeDataframe:
 
     def test_polars_dataframe(self):
         """Should work with polars DataFrame."""
-        df = pl.DataFrame({
-            "temperature": [20.5, 21.0, 20.8, 21.2, 20.9],
-            "humidity": [45, 46, 44, 45, 46],
-        })
+        df = pl.DataFrame(
+            {
+                "temperature": [20.5, 21.0, 20.8, 21.2, 20.9],
+                "humidity": [45, 46, 44, 45, 46],
+            }
+        )
 
         results = describe_dataframe(df, context="Sensor Data")
 
@@ -151,10 +155,12 @@ class TestDescribeDataframe:
 
     def test_context_propagation(self):
         """Context should be propagated to each column."""
-        df = pd.DataFrame({
-            "col1": [1, 2, 3, 4, 5],
-            "col2": [5, 4, 3, 2, 1],
-        })
+        df = pd.DataFrame(
+            {
+                "col1": [1, 2, 3, 4, 5],
+                "col2": [5, 4, 3, 2, 1],
+            }
+        )
 
         results = describe_dataframe(df, context="Test")
 
@@ -214,10 +220,12 @@ class TestLLMTemplates:
 
     def test_create_agent_context(self):
         """Should create multi-column context for agents."""
-        df = pd.DataFrame({
-            "metric1": [10, 20, 30],
-            "metric2": [100, 200, 300],
-        })
+        df = pd.DataFrame(
+            {
+                "metric1": [10, 20, 30],
+                "metric2": [100, 200, 300],
+            }
+        )
 
         results = describe_dataframe(df)
         context = create_agent_context(results)
@@ -381,12 +389,14 @@ class TestRealWorldScenarios:
 
     def test_multi_metric_dashboard(self):
         """Simulate multi-metric monitoring dashboard."""
-        df = pd.DataFrame({
-            "cpu_pct": np.random.normal(40, 10, 50),
-            "memory_pct": np.random.normal(60, 5, 50),
-            "disk_io": np.random.exponential(100, 50),
-            "network_bytes": np.random.normal(1e6, 1e5, 50),
-        })
+        df = pd.DataFrame(
+            {
+                "cpu_pct": np.random.normal(40, 10, 50),
+                "memory_pct": np.random.normal(60, 5, 50),
+                "disk_io": np.random.exponential(100, 50),
+                "network_bytes": np.random.normal(1e6, 1e5, 50),
+            }
+        )
 
         results = describe_dataframe(df, context="Server Health")
 

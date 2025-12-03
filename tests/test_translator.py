@@ -1,13 +1,11 @@
 """Tests for the translator/analysis pipeline."""
 
 import numpy as np
-import pytest
 
 from semantic_frame.core.enums import (
     AnomalyState,
     DataQuality,
     TrendState,
-    VolatilityState,
 )
 from semantic_frame.core.translator import analyze_series
 from semantic_frame.interfaces.json_schema import SemanticResult

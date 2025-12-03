@@ -1,7 +1,5 @@
 """Tests for semantic vocabulary enums."""
 
-import pytest
-
 from semantic_frame.core.enums import (
     AnomalyState,
     DataQuality,

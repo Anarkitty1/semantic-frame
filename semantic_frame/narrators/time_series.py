@@ -16,7 +16,6 @@ from semantic_frame.core.enums import (
 )
 from semantic_frame.interfaces.json_schema import AnomalyInfo, SeriesProfile
 
-
 # Template strings for narrative construction
 TEMPLATES = {
     "base": "The {context} data shows a {trend} pattern with {volatility} variability.",

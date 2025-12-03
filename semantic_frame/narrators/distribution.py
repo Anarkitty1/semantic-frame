@@ -15,7 +15,6 @@ from semantic_frame.core.enums import (
 )
 from semantic_frame.interfaces.json_schema import AnomalyInfo, SeriesProfile
 
-
 # Template strings for distribution narrative
 TEMPLATES = {
     "base": "The {context} data is {distribution} with {volatility} spread.",
@@ -108,8 +107,6 @@ def generate_distribution_narrative(
 
     # Data quality warning
     if data_quality and data_quality not in (DataQuality.PRISTINE, DataQuality.GOOD):
-        parts.append(
-            TEMPLATES["quality_bad"].format(missing=profile.missing_pct)
-        )
+        parts.append(TEMPLATES["quality_bad"].format(missing=profile.missing_pct))
 
     return "".join(parts)

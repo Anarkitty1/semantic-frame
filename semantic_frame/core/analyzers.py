@@ -22,8 +22,6 @@ import warnings
 import numpy as np
 from scipy.stats import kurtosis, pearsonr, skew
 
-logger = logging.getLogger(__name__)
-
 from semantic_frame.core.enums import (
     AnomalyState,
     DataQuality,
@@ -33,6 +31,8 @@ from semantic_frame.core.enums import (
     VolatilityState,
 )
 from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+logger = logging.getLogger(__name__)
 
 
 def calc_linear_slope(values: np.ndarray) -> float:
@@ -132,9 +132,7 @@ def calc_volatility(values: np.ndarray) -> tuple[float, VolatilityState]:
     return cv, VolatilityState.EXTREME
 
 
-def detect_anomalies(
-    values: np.ndarray, z_threshold: float = 3.0
-) -> list[AnomalyInfo]:
+def detect_anomalies(values: np.ndarray, z_threshold: float = 3.0) -> list[AnomalyInfo]:
     """Detect anomalies using adaptive method based on sample size.
 
     The threshold of 10 samples balances:
@@ -192,30 +190,24 @@ def _detect_anomalies_iqr(values: np.ndarray) -> list[AnomalyInfo]:
                 # Approximate z-score: divide by (max_dev/3) to roughly map
                 # to ~3 sigma equivalent for the most extreme values
                 z_approx = dev / (max_dev / 3) if max_dev > 0 else 0.0
-                anomalies.append(
-                    AnomalyInfo(index=i, value=float(val), z_score=float(z_approx))
-                )
+                anomalies.append(AnomalyInfo(index=i, value=float(val), z_score=float(z_approx)))
         return sorted(anomalies, key=lambda a: a.z_score, reverse=True)
 
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr
 
-    anomalies: list[AnomalyInfo] = []
+    result_anomalies: list[AnomalyInfo] = []
     for i, val in enumerate(values):
         if val < lower_bound or val > upper_bound:
             # For normal distributions, IQR = 1.349 * std (from quartile z-scores).
             # Using this relationship to estimate z-score from IQR-based deviation.
             z_approx = abs(val - median) / (iqr / 1.35) if iqr > 0 else 0.0
-            anomalies.append(
-                AnomalyInfo(index=i, value=float(val), z_score=float(z_approx))
-            )
+            result_anomalies.append(AnomalyInfo(index=i, value=float(val), z_score=float(z_approx)))
 
-    return sorted(anomalies, key=lambda a: a.z_score, reverse=True)
+    return sorted(result_anomalies, key=lambda a: a.z_score, reverse=True)
 
 
-def _detect_anomalies_zscore(
-    values: np.ndarray, threshold: float
-) -> list[AnomalyInfo]:
+def _detect_anomalies_zscore(values: np.ndarray, threshold: float) -> list[AnomalyInfo]:
     """Detect anomalies using Z-score method."""
     mean = float(np.mean(values))
     std = float(np.std(values))
@@ -236,20 +228,16 @@ def _detect_anomalies_zscore(
             dev = abs(val - median)
             if dev > threshold_dev:
                 z_approx = dev / (max_dev / 3) if max_dev > 0 else 0.0
-                anomalies.append(
-                    AnomalyInfo(index=i, value=float(val), z_score=float(z_approx))
-                )
+                anomalies.append(AnomalyInfo(index=i, value=float(val), z_score=float(z_approx)))
         return sorted(anomalies, key=lambda a: a.z_score, reverse=True)
 
-    anomalies: list[AnomalyInfo] = []
+    result_anomalies: list[AnomalyInfo] = []
     for i, val in enumerate(values):
         z_score = abs(val - mean) / std
         if z_score >= threshold:
-            anomalies.append(
-                AnomalyInfo(index=i, value=float(val), z_score=float(z_score))
-            )
+            result_anomalies.append(AnomalyInfo(index=i, value=float(val), z_score=float(z_score)))
 
-    return sorted(anomalies, key=lambda a: a.z_score, reverse=True)
+    return sorted(result_anomalies, key=lambda a: a.z_score, reverse=True)
 
 
 def classify_anomaly_state(anomalies: list[AnomalyInfo]) -> AnomalyState:
@@ -340,8 +328,7 @@ def calc_distribution_shape(values: np.ndarray) -> DistributionShape:
     # Handle NaN results from near-constant data
     if np.isnan(s) or np.isnan(k):
         logger.debug(
-            "Distribution calculation returned NaN (skew=%s, kurtosis=%s), "
-            "defaulting to NORMAL",
+            "Distribution calculation returned NaN (skew=%s, kurtosis=%s), " "defaulting to NORMAL",
             s,
             k,
         )
@@ -365,9 +352,7 @@ def calc_distribution_shape(values: np.ndarray) -> DistributionShape:
     return DistributionShape.RIGHT_SKEWED
 
 
-def calc_seasonality(
-    values: np.ndarray, max_lag: int = 30
-) -> tuple[float, SeasonalityState]:
+def calc_seasonality(values: np.ndarray, max_lag: int = 30) -> tuple[float, SeasonalityState]:
     """Detect seasonality using autocorrelation analysis.
 
     Calculates autocorrelation at various lags to detect cyclic patterns.

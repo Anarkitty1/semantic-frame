@@ -21,10 +21,10 @@ AI Agents (built on LLMs) are excellent at strategy and sentiment but terrible a
 
 | Pain Point | Description | The Cortex Solution |
 |---|---|---|
-| **The Context Cost** | Sending 500 rows of OHLCV data to GPT-4 costs money and fills the context window. | **Compression:** We turn 1,500 tokens of raw JSON into a 30-token semantic summary. | 
-| **The Math Gap** | LLMs cannot reliably calculate a 200-day Moving Average; they "hallucinate" the result. | **Deterministic Math:** We use Python (Pandas) to calculate indicators with 100% accuracy. | 
-| **The "Fat Finger"** | Agents lack common sense and will trade into honeypots or high slippage pools. | **Guardrails:** A logic-based safety layer that simulates trades before execution. | 
-| **Liability Risk** | Giving an AI "black box" total control is a legal nightmare for institutions. | **The "Inspector" Model:** We provide factual observations, not financial advice. | 
+| **The Context Cost** | Sending 500 rows of OHLCV data to GPT-4 costs money and fills the context window. | **Compression:** We turn 1,500 tokens of raw JSON into a 30-token semantic summary. |
+| **The Math Gap** | LLMs cannot reliably calculate a 200-day Moving Average; they "hallucinate" the result. | **Deterministic Math:** We use Python (Pandas) to calculate indicators with 100% accuracy. |
+| **The "Fat Finger"** | Agents lack common sense and will trade into honeypots or high slippage pools. | **Guardrails:** A logic-based safety layer that simulates trades before execution. |
+| **Liability Risk** | Giving an AI "black box" total control is a legal nightmare for institutions. | **The "Inspector" Model:** We provide factual observations, not financial advice. |
 
 ---
 

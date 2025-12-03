@@ -179,17 +179,13 @@ class TestClassifyAnomalyState:
     def test_significant_anomalies(self):
         from semantic_frame.interfaces.json_schema import AnomalyInfo
 
-        anomalies = [
-            AnomalyInfo(index=i, value=100.0, z_score=3.5) for i in range(4)
-        ]
+        anomalies = [AnomalyInfo(index=i, value=100.0, z_score=3.5) for i in range(4)]
         assert classify_anomaly_state(anomalies) == AnomalyState.SIGNIFICANT
 
     def test_extreme_count(self):
         from semantic_frame.interfaces.json_schema import AnomalyInfo
 
-        anomalies = [
-            AnomalyInfo(index=i, value=100.0, z_score=3.5) for i in range(6)
-        ]
+        anomalies = [AnomalyInfo(index=i, value=100.0, z_score=3.5) for i in range(6)]
         assert classify_anomaly_state(anomalies) == AnomalyState.EXTREME
 
     def test_extreme_z_score(self):

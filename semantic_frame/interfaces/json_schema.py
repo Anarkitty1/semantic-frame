@@ -9,8 +9,6 @@ modification of analysis results.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from semantic_frame.core.enums import (
@@ -33,9 +31,7 @@ class AnomalyInfo(BaseModel):
 
     index: int = Field(ge=0, description="Position of the anomaly in the data series")
     value: float = Field(description="The anomalous value")
-    z_score: float = Field(
-        ge=0.0, description="Absolute z-score or equivalent deviation measure"
-    )
+    z_score: float = Field(ge=0.0, description="Absolute z-score or equivalent deviation measure")
 
 
 class SeriesProfile(BaseModel):
@@ -58,12 +54,10 @@ class SeriesProfile(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_min_max(self) -> "SeriesProfile":
+    def validate_min_max(self) -> SeriesProfile:
         """Ensure min_val does not exceed max_val."""
         if self.min_val > self.max_val:
-            raise ValueError(
-                f"min_val ({self.min_val}) cannot exceed max_val ({self.max_val})"
-            )
+            raise ValueError(f"min_val ({self.min_val}) cannot exceed max_val ({self.max_val})")
         return self
 
 
@@ -88,10 +82,10 @@ class SemanticResult(BaseModel):
     anomaly_state: AnomalyState = Field(description="Outlier presence and severity")
 
     # Optional classifications (may require more data)
-    seasonality: Optional[SeasonalityState] = Field(
+    seasonality: SeasonalityState | None = Field(
         default=None, description="Cyclic pattern detection result"
     )
-    distribution: Optional[DistributionShape] = Field(
+    distribution: DistributionShape | None = Field(
         default=None, description="Distribution shape classification"
     )
 
@@ -103,7 +97,7 @@ class SemanticResult(BaseModel):
     profile: SeriesProfile = Field(description="Statistical profile of the data")
 
     # Metadata
-    context: Optional[str] = Field(
+    context: str | None = Field(
         default=None, description="User-provided context label for the data"
     )
     compression_ratio: float = Field(
@@ -115,23 +109,21 @@ class SemanticResult(BaseModel):
 
     @field_validator("anomalies", mode="before")
     @classmethod
-    def convert_anomalies_to_tuple(cls, v: list | tuple) -> tuple:
+    def convert_anomalies_to_tuple(
+        cls, v: list[AnomalyInfo] | tuple[AnomalyInfo, ...]
+    ) -> tuple[AnomalyInfo, ...]:
         """Convert list to tuple and enforce max length."""
         if isinstance(v, list):
             v = tuple(v)
         if len(v) > MAX_ANOMALIES:
-            raise ValueError(
-                f"anomalies cannot exceed {MAX_ANOMALIES} items, got {len(v)}"
-            )
+            raise ValueError(f"anomalies cannot exceed {MAX_ANOMALIES} items, got {len(v)}")
         return v
 
     @model_validator(mode="after")
-    def validate_anomaly_consistency(self) -> "SemanticResult":
+    def validate_anomaly_consistency(self) -> SemanticResult:
         """Ensure anomaly_state is consistent with anomalies tuple."""
         if self.anomaly_state == AnomalyState.NONE and len(self.anomalies) > 0:
-            raise ValueError(
-                "anomaly_state is NONE but anomalies tuple is not empty"
-            )
+            raise ValueError("anomaly_state is NONE but anomalies tuple is not empty")
         return self
 
     def to_prompt(self) -> str:
