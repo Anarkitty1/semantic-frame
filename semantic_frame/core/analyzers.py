@@ -27,6 +27,7 @@ from semantic_frame.core.enums import (
     DataQuality,
     DistributionShape,
     SeasonalityState,
+    StructuralChange,
     TrendState,
     VolatilityState,
 )
@@ -418,3 +419,60 @@ def calc_seasonality(values: np.ndarray, max_lag: int = 30) -> tuple[float, Seas
     if peak_autocorr < 0.7:
         return peak_autocorr, SeasonalityState.MODERATE
     return peak_autocorr, SeasonalityState.STRONG
+
+
+def detect_step_changes(
+    values: np.ndarray, window_size: int = 10, threshold: float = 2.0
+) -> tuple[StructuralChange, int | None]:
+    """Detect significant step changes in the data baseline.
+
+    Uses a sliding window approach to compare means before and after each point.
+    A step change is detected if the difference in means exceeds the threshold
+    (measured in standard deviations of the entire series).
+
+    Args:
+        values: NumPy array of time-ordered values.
+        window_size: Size of the window to compare means (default 10).
+        threshold: Z-score threshold for mean difference (default 2.0).
+
+    Returns:
+        Tuple of (StructuralChange, index_of_change).
+        index_of_change is None if StructuralChange is NONE.
+    """
+    n = len(values)
+    if n < window_size * 2:
+        return StructuralChange.NONE, None
+
+    # Calculate global std for thresholding
+    global_std = float(np.std(values))
+    if global_std == 0:
+        return StructuralChange.NONE, None
+
+    max_diff = 0.0
+    change_idx = -1
+    change_type = StructuralChange.NONE
+
+    # Slide window through the data
+    # We need window_size points before and after 'i'
+    for i in range(window_size, n - window_size):
+        before = values[i - window_size : i]
+        after = values[i : i + window_size]
+
+        mean_before = np.mean(before)
+        mean_after = np.mean(after)
+
+        diff = mean_after - mean_before
+        z_score = abs(diff) / global_std
+
+        if z_score > threshold and z_score > max_diff:
+            max_diff = z_score
+            change_idx = i
+            if diff > 0:
+                change_type = StructuralChange.STEP_UP
+            else:
+                change_type = StructuralChange.STEP_DOWN
+
+    if change_type != StructuralChange.NONE:
+        return change_type, change_idx
+
+    return StructuralChange.NONE, None

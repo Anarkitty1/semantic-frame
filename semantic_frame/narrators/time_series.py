@@ -11,6 +11,7 @@ from semantic_frame.core.enums import (
     AnomalyState,
     DataQuality,
     SeasonalityState,
+    StructuralChange,
     TrendState,
     VolatilityState,
 )
@@ -35,23 +36,27 @@ def generate_time_series_narrative(
     anomalies: list[AnomalyInfo],
     profile: SeriesProfile,
     context: str | None = None,
-    data_quality: DataQuality | None = None,
+    data_quality: DataQuality = DataQuality.PRISTINE,
     seasonality: SeasonalityState | None = None,
+    step_change: StructuralChange | None = None,
+    step_change_index: int | None = None,
 ) -> str:
-    """Generate natural language narrative for time-series data.
+    """Generate a natural language description for time series data.
 
     Args:
-        trend: Classified trend state.
-        volatility: Classified volatility state.
-        anomaly_state: Classified anomaly severity.
+        trend: TrendState enum.
+        volatility: VolatilityState enum.
+        anomaly_state: AnomalyState enum.
         anomalies: List of detected anomalies.
-        profile: Statistical profile of the data.
-        context: Optional context label (e.g., "CPU Usage", "Sales").
-        data_quality: Optional data quality classification.
-        seasonality: Optional seasonality classification.
+        profile: Statistical profile.
+        context: Optional context label.
+        data_quality: DataQuality enum.
+        seasonality: Optional SeasonalityState enum.
+        step_change: Optional StructuralChange enum.
+        step_change_index: Optional index of step change.
 
     Returns:
-        Human/LLM-readable narrative string.
+        Semantic narrative string.
     """
     ctx = context or "time series"
 
@@ -89,7 +94,12 @@ def generate_time_series_narrative(
 
     # Seasonality (if detected)
     if seasonality and seasonality != SeasonalityState.NONE:
-        parts.append(TEMPLATES["seasonality"].format(seasonality=seasonality.value.capitalize()))
+        parts.append(f"A {seasonality.value} was detected.")
+
+    # Step Change
+    if step_change and step_change != StructuralChange.NONE:
+        idx_str = f" at index {step_change_index}" if step_change_index is not None else ""
+        parts.append(f"A significant {step_change.value} was detected{idx_str}.")
 
     # Data quality (only mention if poor)
     if data_quality and data_quality not in (DataQuality.PRISTINE, DataQuality.GOOD):

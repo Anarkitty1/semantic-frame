@@ -22,6 +22,14 @@ from semantic_frame.core.analyzers import (
     classify_anomaly_state,
     classify_trend,
     detect_anomalies,
+    detect_step_changes,
+)
+from semantic_frame.core.enums import (
+    AnomalyState,
+    DataQuality,
+    StructuralChange,
+    TrendState,
+    VolatilityState,
 )
 from semantic_frame.interfaces.json_schema import SemanticResult, SeriesProfile
 from semantic_frame.narrators.time_series import generate_time_series_narrative
@@ -86,6 +94,11 @@ def analyze_series(
     if len(clean_values) >= 4:
         distribution = calc_distribution_shape(clean_values)
 
+    step_change = StructuralChange.NONE
+    step_change_idx = None
+    if is_time_series and len(clean_values) >= 10:  # Step change detection needs enough data
+        step_change, step_change_idx = detect_step_changes(clean_values)
+
     # Generate narrative
     narrative = generate_time_series_narrative(
         trend=trend,
@@ -96,6 +109,8 @@ def analyze_series(
         context=context,
         data_quality=data_quality,
         seasonality=seasonality,
+        step_change=step_change,
+        step_change_index=step_change_idx,
     )
 
     # Calculate compression ratio
@@ -114,6 +129,8 @@ def analyze_series(
         anomalies=tuple(anomalies[:5]),  # Convert to tuple for immutable result
         seasonality=seasonality,
         distribution=distribution,
+        step_change=step_change,
+        step_change_index=step_change_idx,
         profile=profile,
         context=context,
         compression_ratio=compression_ratio,
@@ -147,12 +164,10 @@ def _build_profile(values: np.ndarray, clean_values: np.ndarray) -> SeriesProfil
 
 def _empty_result(context: str | None) -> SemanticResult:
     """Return a result for empty/all-NaN/all-Inf data."""
-    from semantic_frame.core.enums import (
-        AnomalyState,
-        DataQuality,
-        TrendState,
-        VolatilityState,
-    )
+    # Import enums locally to avoid circular dependencies if SemanticResult is in the same module
+    # and enums are used in its definition.
+    # However, in this case, they are already imported at the top level.
+    # Keeping this for consistency with the original code's structure.
 
     profile = SeriesProfile(
         count=0,

@@ -3,7 +3,7 @@ name = "semantic-frame"
 version = "0.1.0"
 description = "Semantic compression layer for numerical data - token-efficient LLM context"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
     { name = "Your Name", email = "you@example.com" }
@@ -41,9 +41,13 @@ langchain = [
 crewai = [
     "crewai>=0.1",
 ]
+mcp = [
+    "mcp>=1.0.0",
+]
 all = [
     "langchain>=0.1",
     "crewai>=0.1",
+    "mcp>=1.0.0",
 ]
 
 [project.urls]
@@ -78,5 +82,11 @@ addopts = "-v --cov=semantic_frame --cov-report=term-missing"
 dev = [
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
+    "pytest-asyncio>=0.24.0",
     "pre-commit>=4.0.0",
+]
+
+docs = [
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
 ]

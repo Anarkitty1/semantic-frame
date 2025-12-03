@@ -130,3 +130,19 @@ class CorrelationState(str, Enum):
     WEAK = "weakly related"
     MODERATE_NEGATIVE = "inversely related"
     STRONG_NEGATIVE = "strongly inverse"
+
+
+class StructuralChange(str, Enum):
+    """Classification of structural baseline shifts in time series data.
+
+    Detected using step change analysis.
+
+    Types:
+        - NONE: No significant baseline shift
+        - STEP_UP: Sudden increase in baseline mean
+        - STEP_DOWN: Sudden decrease in baseline mean
+    """
+
+    NONE = "no step change"
+    STEP_UP = "step up"
+    STEP_DOWN = "step down"

@@ -17,6 +17,7 @@ from semantic_frame.core.enums import (
     DataQuality,
     DistributionShape,
     SeasonalityState,
+    StructuralChange,
     TrendState,
     VolatilityState,
 )
@@ -88,6 +89,12 @@ class SemanticResult(BaseModel):
     )
     distribution: DistributionShape | None = Field(
         default=None, description="Distribution shape classification"
+    )
+    step_change: StructuralChange | None = Field(
+        default=None, description="Detected structural baseline shift"
+    )
+    step_change_index: int | None = Field(
+        default=None, description="Index where the step change occurred"
     )
 
     # Detailed data
