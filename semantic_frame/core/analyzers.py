@@ -464,7 +464,7 @@ def detect_step_changes(
         diff = mean_after - mean_before
         z_score = abs(diff) / global_std
 
-        if z_score > threshold and z_score > max_diff:
+        if z_score >= threshold and z_score > max_diff:
             max_diff = z_score
             change_idx = i
             if diff > 0:
