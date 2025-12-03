@@ -78,7 +78,11 @@ class TestCrewAIIntegration:
         from semantic_frame.integrations.crewai import get_crewai_tool
 
         try:
-            from crewai import tool  # noqa: F401
+            # crewai >= 1.0 moved tool to crewai.tools
+            try:
+                from crewai.tools import tool  # noqa: F401
+            except ImportError:
+                from crewai import tool  # noqa: F401
 
             # crewai is available, tool should work
             crewai_tool = get_crewai_tool()
@@ -95,7 +99,8 @@ class TestCrewAIIntegration:
             from semantic_frame.integrations.crewai import get_crewai_tool
 
             tool = get_crewai_tool()
-            result = tool("[10, 20, 30, 40, 50]", "Test")
+            # crewai Tool objects use .run() method, not direct call
+            result = tool.run(data="[10, 20, 30, 40, 50]", context="Test")
             assert isinstance(result, str)
             assert len(result) > 0
         except ImportError:

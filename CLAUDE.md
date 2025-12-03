@@ -66,15 +66,20 @@ Input (NumPy/Pandas/Polars) → Profiler → Classifier → Narrator → Output 
 semantic_frame/
 ├── main.py              # Public API: describe_series(), describe_dataframe()
 ├── core/
-│   ├── enums.py         # Semantic vocabulary (TrendState, VolatilityState, etc.)
+│   ├── enums.py         # Semantic vocabulary (TrendState, VolatilityState, CorrelationState, etc.)
 │   ├── analyzers.py     # Math engine (NumPy/scipy stats, no LLMs)
+│   ├── correlations.py  # Cross-column correlation analysis (Pearson/Spearman)
 │   └── translator.py    # Orchestrates pipeline: profile → analyze → narrate
 ├── narrators/
 │   ├── time_series.py   # Generates narratives for ordered data
-│   └── distribution.py  # Generates narratives for unordered data
-└── interfaces/
-    ├── json_schema.py   # Pydantic models (SemanticResult, AnomalyInfo, etc.)
-    └── llm_templates.py # LangChain/agent integration helpers
+│   ├── distribution.py  # Generates narratives for unordered data
+│   └── correlation.py   # Generates narratives for column relationships
+├── interfaces/
+│   ├── json_schema.py   # Pydantic models (SemanticResult, AnomalyInfo, etc.)
+│   └── llm_templates.py # LangChain/agent integration helpers
+└── integrations/
+    ├── langchain.py     # LangChain BaseTool wrapper (optional dep)
+    └── crewai.py        # CrewAI tool decorator wrapper (optional dep)
 ```
 
 ### Data Flow
@@ -92,6 +97,10 @@ semantic_frame/
    - `detect_anomalies()` → adaptive Z-score/IQR based on sample size
    - `calc_seasonality()` → autocorrelation analysis
    - `calc_distribution_shape()` → skewness/kurtosis classification
+4. **correlations.py**: Cross-column relationship analysis:
+   - `classify_correlation()` → maps r-value to `CorrelationState` enum
+   - `calc_correlation_matrix()` → pairwise Pearson/Spearman correlations
+   - `identify_significant_correlations()` → filters by threshold (default 0.5)
 
 ### Key Design Decisions
 
@@ -106,9 +115,12 @@ semantic_frame/
 Tests are organized to mirror the module structure:
 - `test_enums.py` - Enum value tests
 - `test_analyzers.py` - Math function unit tests
+- `test_correlations.py` - Correlation analysis tests
 - `test_translator.py` - Pipeline integration tests
 - `test_narrators.py` - Narrative generation tests
 - `test_integration.py` - End-to-end with various data types
+- `test_langchain_integration.py` - LangChain tool wrapper tests
+- `test_crewai_integration.py` - CrewAI tool wrapper tests
 
 When adding new analysis features:
 1. Add enum to `core/enums.py` with threshold docstring
@@ -117,7 +129,16 @@ When adding new analysis features:
 4. Update narrative in `narrators/time_series.py`
 5. Add tests for each layer
 
+## Framework Integrations
+
+Optional dependencies for agent frameworks:
+- **LangChain**: `pip install semantic-frame[langchain]` → `get_semantic_tool()` in `integrations/langchain.py`
+- **CrewAI**: `pip install semantic-frame[crewai]` → `get_crewai_tool()` in `integrations/crewai.py`
+
+Both integrations use lazy imports and provide helpful errors if dependencies are missing.
+
 ## Dependencies
 
 Core: numpy, pandas, polars, scipy, pydantic
 Dev: pytest, pytest-cov, mypy, ruff, pre-commit
+Optional: langchain, crewai (for agent framework integrations)

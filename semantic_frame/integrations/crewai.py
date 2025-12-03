@@ -27,11 +27,18 @@ def _check_crewai() -> bool:
     global _crewai_available
     if _crewai_available is None:
         try:
-            from crewai import tool  # noqa: F401
+            # crewai >= 1.0 moved tool to crewai.tools
+            from crewai.tools import tool  # noqa: F401
 
             _crewai_available = True
         except ImportError:
-            _crewai_available = False
+            try:
+                # Fallback for older crewai versions
+                from crewai import tool  # noqa: F401
+
+                _crewai_available = True
+            except ImportError:
+                _crewai_available = False
     return _crewai_available
 
 
@@ -123,7 +130,11 @@ def get_crewai_tool() -> Any:
             "Install with: pip install semantic-frame[crewai]"
         )
 
-    from crewai import tool
+    # crewai >= 1.0 moved tool to crewai.tools
+    try:
+        from crewai.tools import tool
+    except ImportError:
+        from crewai import tool
 
     @tool("Semantic Data Analysis")  # type: ignore[misc]
     def analyze_data(data: str, context: str = "Data") -> str:
