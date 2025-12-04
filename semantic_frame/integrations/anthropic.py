@@ -3,6 +3,11 @@
 This module provides native Anthropic tool use support for analyzing
 numerical data directly with the Anthropic Python SDK.
 
+Supports Anthropic's Advanced Tool Use features (beta):
+- Tool Use Examples: Concrete examples for +18% parameter accuracy
+- Deferred Loading: For agents with 1000+ tools
+- Programmatic Tool Calling: Batch analysis via code execution
+
 Requires: pip install semantic-frame[anthropic]
 
 Example:
@@ -24,6 +29,26 @@ Example:
     ...     if block.type == "tool_use" and block.name == "semantic_analysis":
     ...         result = handle_tool_call(block.input)
     ...         print(result)
+
+Advanced Tool Use Example (Beta):
+    >>> # For agents with many tools, use deferred loading
+    >>> tool = get_anthropic_tool(
+    ...     defer_loading=True,
+    ...     allowed_callers=["code_execution"],
+    ...     include_examples=True,
+    ... )
+    >>>
+    >>> response = client.beta.messages.create(
+    ...     betas=["advanced-tool-use-2025-11-20"],
+    ...     model="claude-sonnet-4-5-20250929",
+    ...     max_tokens=4096,
+    ...     tools=[
+    ...         {"type": "tool_search_tool_regex_20251119", "name": "tool_search"},
+    ...         {"type": "code_execution_20250825", "name": "code_execution"},
+    ...         tool,
+    ...     ],
+    ...     messages=[...]
+    ... )
 """
 
 from __future__ import annotations
@@ -99,13 +124,85 @@ def _parse_data_input(data: str | list[float | int]) -> list[float]:
     )
 
 
-# Anthropic tool schema following their native format
+# =============================================================================
+# Tool Use Examples (Anthropic Advanced Tool Use)
+# These concrete examples boost parameter accuracy by ~18% per Anthropic's testing
+# =============================================================================
+
+TOOL_USE_EXAMPLES: list[dict[str, Any]] = [
+    # Example 1: Anomaly detection (spike in otherwise stable data)
+    {
+        "input": {
+            "data": [100, 102, 99, 101, 500, 100, 98],
+            "context": "Server Latency (ms)",
+        },
+        "expected_output": (
+            "The Server Latency (ms) data shows a flat/stationary pattern with "
+            "stable variability. 1 anomaly detected at index 4 (value: 500.00). "
+            "Baseline: 100.00 (range: 98.00-500.00)."
+        ),
+    },
+    # Example 2: Clear upward trend
+    {
+        "input": {
+            "data": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+            "context": "Daily Sales ($)",
+        },
+        "expected_output": (
+            "The Daily Sales ($) data shows a rapidly rising pattern with "
+            "stable variability. No anomalies detected. "
+            "Baseline: 55.00 (range: 10.00-100.00)."
+        ),
+    },
+    # Example 3: JSON output format
+    {
+        "input": {
+            "data": [45, 47, 46, 95, 44, 45, 46],
+            "context": "CPU Usage %",
+            "output_format": "json",
+        },
+        "expected_output": (
+            '{"narrative": "The CPU Usage % data shows...", '
+            '"trend": "flat/stationary", "volatility": "stable", '
+            '"anomalies": [{"index": 3, "value": 95.0, "z_score": 4.2}]}'
+        ),
+    },
+    # Example 4: Minimal input (no context)
+    {
+        "input": {
+            "data": [1.5, 1.4, 1.6, 1.5, 1.3, 1.7],
+        },
+        "expected_output": (
+            "The data shows a flat/stationary pattern with stable variability. "
+            "No anomalies detected. Baseline: 1.50 (range: 1.30-1.70)."
+        ),
+    },
+    # Example 5: Crypto-style volatile data
+    {
+        "input": {
+            "data": [42000, 43500, 41000, 44000, 39000, 46000, 38000, 47000],
+            "context": "BTC/USD Hourly",
+        },
+        "expected_output": (
+            "The BTC/USD Hourly data shows a rising pattern with expanding "
+            "variability. No anomalies detected but volatility is high. "
+            "Baseline: 42562.50 (range: 38000.00-47000.00)."
+        ),
+    },
+]
+
+
+# =============================================================================
+# Base Tool Schema (Anthropic Native Format)
+# =============================================================================
+
 ANTHROPIC_TOOL_SCHEMA: dict[str, Any] = {
     "name": "semantic_analysis",
     "description": (
         "Analyze numerical time series or distribution data to extract semantic insights. "
         "Returns a natural language description of trends, volatility, anomalies, and patterns. "
-        "Use this instead of processing raw numbers to get accurate statistical analysis."
+        "Use this instead of processing raw numbers to get accurate statistical analysis. "
+        "Supports arrays of any size - the tool compresses 10,000+ data points into ~50 words."
     ),
     "input_schema": {
         "type": "object",
@@ -113,16 +210,19 @@ ANTHROPIC_TOOL_SCHEMA: dict[str, Any] = {
             "data": {
                 "type": "array",
                 "items": {"type": "number"},
-                "description": "Array of numerical values to analyze",
+                "description": "Array of numerical values to analyze (prices, metrics, readings)",
             },
             "context": {
                 "type": "string",
-                "description": "Optional label for the data (e.g., 'Daily Sales')",
+                "description": (
+                    "Label for the data that appears in the narrative. "
+                    "Examples: 'CPU Usage %', 'Daily Revenue', 'BTC/USD', 'Temperature (C)'"
+                ),
             },
             "output_format": {
                 "type": "string",
                 "enum": ["text", "json"],
-                "description": "Output format: 'text' or 'json'. Default: 'text'",
+                "description": "Output format: 'text' (narrative) or 'json' (structured)",
             },
         },
         "required": ["data"],
@@ -130,27 +230,142 @@ ANTHROPIC_TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
-def get_anthropic_tool() -> dict[str, Any]:
+def get_anthropic_tool(
+    *,
+    defer_loading: bool = False,
+    allowed_callers: list[str] | None = None,
+    include_examples: bool = True,
+) -> dict[str, Any]:
     """Get the Anthropic tool definition for semantic analysis.
+
+    Supports Anthropic's Advanced Tool Use features (beta) for improved
+    accuracy and efficiency in large tool libraries.
+
+    Args:
+        defer_loading: If True, tool is discovered via Tool Search Tool rather
+            than loaded into context upfront. Use for agents with 50+ tools.
+            Requires: betas=["advanced-tool-use-2025-11-20"]
+        allowed_callers: List of callers that can invoke this tool.
+            Set to ["code_execution"] to enable batch analysis via
+            Programmatic Tool Calling. Requires code_execution tool enabled.
+        include_examples: If True (default), includes input_examples for
+            +18% parameter accuracy per Anthropic's testing.
 
     Returns:
         Tool definition dict compatible with Anthropic's messages API.
 
-    Example:
-        >>> import anthropic
-        >>> from semantic_frame.integrations.anthropic import get_anthropic_tool
-        >>>
-        >>> client = anthropic.Anthropic()
+    Example (Standard):
         >>> tool = get_anthropic_tool()
-        >>>
         >>> response = client.messages.create(
         ...     model="claude-sonnet-4-20250514",
-        ...     max_tokens=1024,
         ...     tools=[tool],
-        ...     messages=[{"role": "user", "content": "Analyze [1,2,3,100,4,5]"}]
+        ...     ...
+        ... )
+
+    Example (Advanced Tool Use - Beta):
+        >>> # For large tool libraries with batch processing
+        >>> tool = get_anthropic_tool(
+        ...     defer_loading=True,
+        ...     allowed_callers=["code_execution"],
+        ... )
+        >>> response = client.beta.messages.create(
+        ...     betas=["advanced-tool-use-2025-11-20"],
+        ...     model="claude-sonnet-4-5-20250929",
+        ...     tools=[
+        ...         {"type": "tool_search_tool_regex_20251119", "name": "tool_search"},
+        ...         {"type": "code_execution_20250825", "name": "code_execution"},
+        ...         tool,
+        ...     ],
+        ...     ...
         ... )
     """
-    return ANTHROPIC_TOOL_SCHEMA.copy()
+    tool = ANTHROPIC_TOOL_SCHEMA.copy()
+    tool["input_schema"] = ANTHROPIC_TOOL_SCHEMA["input_schema"].copy()
+
+    # Advanced Tool Use: Deferred Loading
+    if defer_loading:
+        tool["defer_loading"] = True
+
+    # Advanced Tool Use: Programmatic Tool Calling
+    if allowed_callers:
+        tool["allowed_callers"] = allowed_callers
+
+    # Advanced Tool Use: Input Examples (+18% accuracy)
+    if include_examples:
+        tool["input_examples"] = TOOL_USE_EXAMPLES
+
+    return tool
+
+
+def get_tool_for_discovery() -> dict[str, Any]:
+    """Get tool configured for Tool Search discovery.
+
+    Returns a tool definition optimized for large tool libraries where
+    tools are discovered on-demand via Tool Search Tool rather than
+    loaded into context upfront.
+
+    Returns:
+        Tool definition with defer_loading=True.
+
+    Example:
+        >>> tools = [
+        ...     {"type": "tool_search_tool_regex_20251119", "name": "tool_search"},
+        ...     get_tool_for_discovery(),
+        ...     # ... hundreds more deferred tools
+        ... ]
+    """
+    return get_anthropic_tool(defer_loading=True, include_examples=True)
+
+
+def get_tool_for_batch_processing() -> dict[str, Any]:
+    """Get tool configured for Programmatic Tool Calling.
+
+    Returns a tool definition that can be called from code execution,
+    enabling parallel batch analysis of multiple data series.
+
+    Returns:
+        Tool definition with allowed_callers=["code_execution"].
+
+    Example:
+        >>> # Claude can now call this from code:
+        >>> # results = await asyncio.gather(*[
+        >>> #     semantic_analysis(col) for col in dataframe.columns
+        >>> # ])
+    """
+    return get_anthropic_tool(
+        allowed_callers=["code_execution"],
+        include_examples=True,
+    )
+
+
+def get_advanced_tool() -> dict[str, Any]:
+    """Get fully-featured tool for Advanced Tool Use.
+
+    Combines all advanced features:
+    - defer_loading: Discovered via search, not loaded upfront
+    - allowed_callers: Can be called from code for batch processing
+    - input_examples: Concrete examples for better accuracy
+
+    Returns:
+        Tool definition with all advanced features enabled.
+
+    Example:
+        >>> response = client.beta.messages.create(
+        ...     betas=["advanced-tool-use-2025-11-20"],
+        ...     model="claude-sonnet-4-5-20250929",
+        ...     tools=[
+        ...         {"type": "tool_search_tool_regex_20251119", "name": "tool_search"},
+        ...         {"type": "code_execution_20250825", "name": "code_execution"},
+        ...         get_advanced_tool(),
+        ...     ],
+        ...     messages=[...]
+        ... )
+    """
+    return get_anthropic_tool(
+        defer_loading=True,
+        allowed_callers=["code_execution"],
+        include_examples=True,
+    )
 
 
 def handle_tool_call(
@@ -191,6 +406,32 @@ def handle_tool_call(
     else:
         text_result: str = describe_series(values, context=context, output="text")
         return text_result
+
+
+def handle_batch_tool_calls(
+    tool_inputs: list[dict[str, Any]],
+    default_context: str | None = None,
+) -> list[str]:
+    """Handle multiple semantic_analysis tool calls in batch.
+
+    Useful for Programmatic Tool Calling where Claude invokes the tool
+    multiple times from code execution.
+
+    Args:
+        tool_inputs: List of input dicts from tool_use blocks.
+        default_context: Fallback context prefix for all calls.
+
+    Returns:
+        List of analysis results in the same order as inputs.
+
+    Example:
+        >>> inputs = [
+        ...     {"data": [1, 2, 3], "context": "Series A"},
+        ...     {"data": [4, 5, 6], "context": "Series B"},
+        ... ]
+        >>> results = handle_batch_tool_calls(inputs)
+    """
+    return [handle_tool_call(inp, default_context) for inp in tool_inputs]
 
 
 def create_tool_result(tool_use_id: str, result: str) -> dict[str, Any]:
@@ -239,9 +480,9 @@ class AnthropicSemanticTool:
     """Helper class for managing semantic analysis with Anthropic's API.
 
     Provides a higher-level interface for tool use with automatic
-    tool call handling.
+    tool call handling. Supports Advanced Tool Use features.
 
-    Example:
+    Example (Standard):
         >>> import anthropic
         >>> from semantic_frame.integrations.anthropic import AnthropicSemanticTool
         >>>
@@ -256,19 +497,44 @@ class AnthropicSemanticTool:
         ...     if block.type == "tool_use" and block.name == "semantic_analysis":
         ...         result = semantic.handle(block.input)
         ...         tool_result = semantic.create_result(block.id, result)
+
+    Example (Advanced Tool Use):
+        >>> semantic = AnthropicSemanticTool(
+        ...     context="Trading Metrics",
+        ...     defer_loading=True,
+        ...     allowed_callers=["code_execution"],
+        ... )
+        >>> tool = semantic.get_tool()  # Configured for advanced features
     """
 
-    def __init__(self, context: str | None = None) -> None:
+    def __init__(
+        self,
+        context: str | None = None,
+        *,
+        defer_loading: bool = False,
+        allowed_callers: list[str] | None = None,
+        include_examples: bool = True,
+    ) -> None:
         """Initialize the tool helper.
 
         Args:
             context: Default context label for analysis.
+            defer_loading: Enable Tool Search discovery.
+            allowed_callers: Enable Programmatic Tool Calling.
+            include_examples: Include input examples for accuracy.
         """
         self.context = context
+        self.defer_loading = defer_loading
+        self.allowed_callers = allowed_callers
+        self.include_examples = include_examples
 
     def get_tool(self) -> dict[str, Any]:
-        """Get the tool definition."""
-        return get_anthropic_tool()
+        """Get the tool definition with configured options."""
+        return get_anthropic_tool(
+            defer_loading=self.defer_loading,
+            allowed_callers=self.allowed_callers,
+            include_examples=self.include_examples,
+        )
 
     def handle(self, tool_input: dict[str, Any]) -> str:
         """Handle a tool call.
@@ -280,6 +546,17 @@ class AnthropicSemanticTool:
             Analysis result string.
         """
         return handle_tool_call(tool_input, default_context=self.context)
+
+    def handle_batch(self, tool_inputs: list[dict[str, Any]]) -> list[str]:
+        """Handle multiple tool calls in batch.
+
+        Args:
+            tool_inputs: List of inputs from tool_use blocks.
+
+        Returns:
+            List of analysis results.
+        """
+        return handle_batch_tool_calls(tool_inputs, default_context=self.context)
 
     def create_result(self, tool_use_id: str, result: str) -> dict[str, Any]:
         """Create a tool result message.

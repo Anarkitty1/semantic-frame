@@ -1,24 +1,38 @@
 [project]
 name = "semantic-frame"
-version = "0.1.0"
-description = "Semantic compression layer for numerical data - token-efficient LLM context"
+version = "0.2.0"
+description = "Semantic compression layer for numerical data - token-efficient LLM context with Anthropic Advanced Tool Use support"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
-    { name = "Your Name", email = "you@example.com" }
+    { name = "Emma", email = "emma@example.com" }
 ]
-keywords = ["semantic", "llm", "data", "compression", "pandas", "polars", "numpy"]
+keywords = [
+    "semantic",
+    "llm",
+    "ai-agents",
+    "data-compression",
+    "pandas",
+    "polars",
+    "numpy",
+    "anthropic",
+    "mcp",
+    "tool-use",
+    "langchain",
+    "crewai",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 dependencies = [
     "numpy>=1.20",
@@ -55,8 +69,10 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/semantic-frame"
-Repository = "https://github.com/yourusername/semantic-frame"
+Homepage = "https://github.com/Anarkitty1/semantic-frame"
+Repository = "https://github.com/Anarkitty1/semantic-frame"
+Documentation = "https://github.com/Anarkitty1/semantic-frame#readme"
+Changelog = "https://github.com/Anarkitty1/semantic-frame/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

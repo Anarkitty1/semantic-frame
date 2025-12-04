@@ -232,6 +232,64 @@ claude mcp list
 
 Once configured, ask Claude to analyze data and it will use the `describe_data` tool automatically.
 
+## Advanced Tool Use (Beta)
+
+Semantic Frame supports [Anthropic's Advanced Tool Use features](https://www.anthropic.com/engineering/advanced-tool-use) for efficient tool orchestration in complex agent workflows.
+
+### Features
+
+| Feature | Benefit | API |
+|---------|---------|-----|
+| **Input Examples** | +18% parameter accuracy | Included by default |
+| **Tool Search** | 1000+ tools without context bloat | `defer_loading=True` |
+| **Programmatic Calling** | Batch analysis via code execution | `allowed_callers=["code_execution"]` |
+
+### Quick Start (Advanced)
+
+```python
+import anthropic
+from semantic_frame.integrations.anthropic import get_advanced_tool, handle_tool_call
+
+client = anthropic.Anthropic()
+tool = get_advanced_tool()  # All advanced features enabled
+
+response = client.beta.messages.create(
+    betas=["advanced-tool-use-2025-11-20"],
+    model="claude-sonnet-4-5-20250929",
+    max_tokens=4096,
+    tools=[
+        {"type": "tool_search_tool_regex_20251119", "name": "tool_search"},
+        {"type": "code_execution_20250825", "name": "code_execution"},
+        tool,
+    ],
+    messages=[{"role": "user", "content": "Analyze all columns in this dataset..."}]
+)
+```
+
+### Configuration Options
+
+```python
+from semantic_frame.integrations.anthropic import (
+    get_anthropic_tool,          # Standard (includes examples)
+    get_tool_for_discovery,      # For Tool Search
+    get_tool_for_batch_processing,  # For code execution
+    get_advanced_tool,           # All features enabled
+)
+```
+
+### MCP Batch Analysis
+
+```python
+from semantic_frame.integrations.mcp import describe_batch
+
+# Analyze multiple series in one call
+result = describe_batch(
+    datasets='{"cpu": [45, 47, 95, 44], "memory": [60, 61, 60, 61]}',
+)
+```
+
+See [docs/advanced-tool-use.md](docs/advanced-tool-use.md) for complete documentation.
+
 ## Use Cases
 
 ### Crypto Trading
