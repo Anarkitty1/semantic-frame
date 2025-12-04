@@ -313,6 +313,62 @@ class TestCompressionStats:
         assert stats["narrative_tokens"] > 0
         assert 0 <= stats["narrative_compression_ratio"] <= 1
 
+    def test_compression_stats_with_real_tokenizer(self):
+        """Should use tiktoken when use_real_tokenizer=True."""
+        pytest.importorskip("tiktoken")
+
+        # Use larger dataset to ensure positive compression ratio
+        data = pd.Series(np.random.normal(100, 10, 500))
+        result = describe_series(data, output="full")
+
+        stats = compression_stats(data, result, use_real_tokenizer=True)
+
+        assert stats["tokenizer"] == "tiktoken"
+        assert stats["original_data_points"] == 500
+        assert stats["original_tokens_estimate"] > 0
+        assert stats["narrative_tokens"] > 0
+        assert stats["json_tokens"] > 0
+        # With 500 data points, we expect significant compression
+        assert stats["narrative_compression_ratio"] > 0.5
+        assert stats["json_compression_ratio"] > 0
+
+    def test_compression_stats_real_tokenizer_different_from_estimate(self):
+        """Real tokenizer should produce different counts than estimate."""
+        pytest.importorskip("tiktoken")
+
+        data = pd.Series(np.random.normal(100, 10, 100))
+        result = describe_series(data, output="full")
+
+        stats_estimate = compression_stats(data, result, use_real_tokenizer=False)
+        stats_real = compression_stats(data, result, use_real_tokenizer=True)
+
+        assert stats_estimate["tokenizer"] == "estimate"
+        assert stats_real["tokenizer"] == "tiktoken"
+        # Token counts will differ between estimation and actual tokenization
+        assert stats_estimate["original_tokens_estimate"] != stats_real["original_tokens_estimate"]
+
+    def test_compression_stats_real_tokenizer_fallback(self, monkeypatch):
+        """Should fallback to estimate when tiktoken is not available."""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "tiktoken":
+                raise ImportError("tiktoken not installed")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+
+        data = pd.Series([10.0, 20.0, 30.0, 40.0, 50.0])
+        result = describe_series(data, output="full")
+
+        stats = compression_stats(data, result, use_real_tokenizer=True)
+
+        # Should fallback to estimate
+        assert stats["tokenizer"] == "estimate"
+        assert stats["original_tokens_estimate"] == 10  # 5 * 2
+
 
 class TestLLMTemplates:
     """Tests for LLM integration templates."""
