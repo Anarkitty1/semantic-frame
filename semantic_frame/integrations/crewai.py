@@ -16,26 +16,30 @@ Example:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 # Lazy import check for crewai
 _crewai_available: bool | None = None
+_tool_decorator: Callable[..., Any] | None = None
 
 
 def _check_crewai() -> bool:
-    """Check if crewai is available."""
-    global _crewai_available
+    """Check if crewai is available and cache the tool decorator."""
+    global _crewai_available, _tool_decorator
     if _crewai_available is None:
         try:
             # crewai >= 1.0 moved tool to crewai.tools
-            from crewai.tools import tool  # noqa: F401
+            from crewai.tools import tool as crewai_tool
 
+            _tool_decorator = crewai_tool
             _crewai_available = True
         except ImportError:
             try:
                 # Fallback for older crewai versions
-                from crewai import tool  # noqa: F401
+                from crewai import tool as crewai_tool_legacy  # type: ignore[attr-defined]
 
+                _tool_decorator = crewai_tool_legacy
                 _crewai_available = True
             except ImportError:
                 _crewai_available = False
@@ -124,17 +128,14 @@ def get_crewai_tool() -> Any:
         >>> tool = get_crewai_tool()
         >>> agent = Agent(role="Data Analyst", tools=[tool])
     """
-    if not _check_crewai():
+    if not _check_crewai() or _tool_decorator is None:
         raise ImportError(
             "crewai is required for get_crewai_tool(). "
             "Install with: pip install semantic-frame[crewai]"
         )
 
-    # crewai >= 1.0 moved tool to crewai.tools
-    try:
-        from crewai.tools import tool
-    except ImportError:
-        from crewai import tool
+    # Use the cached tool decorator
+    tool = _tool_decorator
 
     @tool("Semantic Data Analysis")  # type: ignore[misc]
     def analyze_data(data: str, context: str = "Data") -> str:
