@@ -312,6 +312,18 @@ def calc_distribution_shape(values: np.ndarray) -> DistributionShape:
     if np.ptp(values) == 0:
         return DistributionShape.NORMAL
 
+    # Check for near-constant data (numerical precision issues)
+    # If the coefficient of variation is extremely low, the values are
+    # effectively identical and scipy will produce spurious kurtosis/skewness
+    mean_val = abs(float(np.mean(values)))
+    std_val = float(np.std(values))
+    if mean_val > 0:
+        cv = std_val / mean_val
+        # CV < 1e-10 means values differ by less than 1 part in 10 billion
+        # relative to the mean - effectively constant for statistical purposes
+        if cv < 1e-10:
+            return DistributionShape.NORMAL
+
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
@@ -354,9 +366,11 @@ def calc_distribution_shape(values: np.ndarray) -> DistributionShape:
 
 
 def calc_seasonality(values: np.ndarray, max_lag: int = 30) -> tuple[float, SeasonalityState]:
-    """Detect seasonality using autocorrelation analysis.
+    """Detect seasonality using autocorrelation analysis on detrended data.
 
     Calculates autocorrelation at various lags to detect cyclic patterns.
+    Data is first detrended (linear trend removed) to avoid false positives
+    from monotonically increasing/decreasing series.
 
     Thresholds (peak autocorrelation):
         - NONE: < 0.3
@@ -385,14 +399,33 @@ def calc_seasonality(values: np.ndarray, max_lag: int = 30) -> tuple[float, Seas
     if effective_max_lag < 2:
         return 0.0, SeasonalityState.NONE
 
-    # Calculate autocorrelation at different lags
+    # Detrend data: remove linear trend to avoid false positives from
+    # monotonically increasing/decreasing series (which have high
+    # autocorrelation at all lags but no cyclic pattern)
+    x = np.arange(n)
+    coeffs = np.polyfit(x, values, 1)
+    detrended = values - np.polyval(coeffs, x)
+
+    # Check if detrended data has any meaningful variance
+    # After removing linear trend, pure linear data will have near-zero residuals
+    # (only numerical noise). We use coefficient of variation to check.
+    detrended_std = float(np.std(detrended))
+    detrended_mean = abs(float(np.mean(values)))  # Use original mean for scale
+    if detrended_mean > 0:
+        cv = detrended_std / detrended_mean
+        if cv < 1e-10:  # Effectively no variance relative to data scale
+            return 0.0, SeasonalityState.NONE
+    elif detrended_std < 1e-10:  # Near-zero data with near-zero residuals
+        return 0.0, SeasonalityState.NONE
+
+    # Calculate autocorrelation at different lags on detrended data
     autocorrs: list[float] = []
     logged_error = False
     for lag in range(1, effective_max_lag):
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                corr, _ = pearsonr(values[:-lag], values[lag:])
+                corr, _ = pearsonr(detrended[:-lag], detrended[lag:])
             if not np.isnan(corr):
                 autocorrs.append(abs(float(corr)))
         except (ValueError, FloatingPointError) as e:
