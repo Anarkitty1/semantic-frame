@@ -546,6 +546,8 @@ class TestZscoreZeroStdFallback:
         assert any(a.value == 200.0 for a in anomalies)
 
 
+@pytest.mark.filterwarnings("ignore:overflow encountered:RuntimeWarning:numpy")
+@pytest.mark.filterwarnings("ignore:invalid value encountered:RuntimeWarning:numpy")
 class TestDistributionScipyExceptions:
     """Tests for distribution shape calculation exception handling.
 
