@@ -45,7 +45,7 @@ crewai = [
     "crewai>=0.1",
 ]
 mcp = [
-    "mcp>=1.0.0",
+    "mcp[cli]>=1.0.0",
 ]
 all = [
     "anthropic>=0.20",
