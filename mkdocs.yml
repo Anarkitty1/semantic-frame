@@ -4,6 +4,8 @@ site_url: https://semantic-frame.example.com
 repo_url: https://github.com/yourusername/semantic-frame
 repo_name: semantic-frame
 
+dev_addr: 127.0.0.1:8001
+
 theme:
   name: material
   features:
