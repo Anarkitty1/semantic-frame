@@ -90,6 +90,25 @@ Classification of correlation strength between two variables (Pearson r).
 | `MODERATE_NEGATIVE` | Inversely related | -0.7 <= r < -0.4 |
 | `STRONG_NEGATIVE` | Strongly inverse | r < -0.7 |
 
+## Acceleration
+
+Classification of rate of change in trend (second derivative). Measures whether the trend is speeding up, slowing down, or constant.
+
+Calculated using the second derivative of a polynomial fit, normalized by data range.
+
+| Enum | Description | Math Logic |
+|------|-------------|------------|
+| `ACCELERATING_SHARPLY` | Rapidly increasing rate of change | second_deriv > 0.3 |
+| `ACCELERATING` | Increasing rate of change | 0.1 < second_deriv ≤ 0.3 |
+| `STEADY` | Constant rate of change | -0.1 ≤ second_deriv ≤ 0.1 |
+| `DECELERATING` | Decreasing rate of change | -0.3 ≤ second_deriv < -0.1 |
+| `DECELERATING_SHARPLY` | Rapidly decreasing rate of change | second_deriv < -0.3 |
+
+**Use cases:**
+- Detecting trend reversals ("rising but slowing down")
+- Identifying momentum changes in financial data
+- Predicting when a growth pattern will plateau
+
 ## Structural Change
 
 Classification of structural baseline shifts in time series data, detected using step change analysis.

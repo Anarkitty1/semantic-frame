@@ -1,6 +1,7 @@
 """Tests for semantic vocabulary enums."""
 
 from semantic_frame.core.enums import (
+    AccelerationState,
     AnomalyState,
     DataQuality,
     DistributionShape,
@@ -93,4 +94,33 @@ class TestDistributionShape:
     def test_all_members_exist(self):
         expected = ["NORMAL", "LEFT_SKEWED", "RIGHT_SKEWED", "BIMODAL", "UNIFORM"]
         actual = [e.name for e in DistributionShape]
+        assert set(expected) == set(actual)
+
+
+class TestAccelerationState:
+    """Tests for AccelerationState enum."""
+
+    def test_values_are_strings(self):
+        """Enum values should be descriptive strings."""
+        assert AccelerationState.ACCELERATING_SHARPLY.value == "rapidly accelerating"
+        assert AccelerationState.ACCELERATING.value == "accelerating"
+        assert AccelerationState.STEADY.value == "steady rate of change"
+        assert AccelerationState.DECELERATING.value == "decelerating"
+        assert AccelerationState.DECELERATING_SHARPLY.value == "rapidly decelerating"
+
+    def test_string_subclass(self):
+        """Enums should be string subclass for easy serialization."""
+        assert isinstance(AccelerationState.STEADY, str)
+        assert AccelerationState.STEADY == "steady rate of change"
+
+    def test_all_members_exist(self):
+        """All expected acceleration states should exist."""
+        expected = [
+            "ACCELERATING_SHARPLY",
+            "ACCELERATING",
+            "STEADY",
+            "DECELERATING",
+            "DECELERATING_SHARPLY",
+        ]
+        actual = [e.name for e in AccelerationState]
         assert set(expected) == set(actual)

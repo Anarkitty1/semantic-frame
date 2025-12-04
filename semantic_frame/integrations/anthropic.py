@@ -234,7 +234,7 @@ def get_anthropic_tool(
     *,
     defer_loading: bool = False,
     allowed_callers: list[str] | None = None,
-    include_examples: bool = True,
+    include_examples: bool = False,
 ) -> dict[str, Any]:
     """Get the Anthropic tool definition for semantic analysis.
 
@@ -248,8 +248,10 @@ def get_anthropic_tool(
         allowed_callers: List of callers that can invoke this tool.
             Set to ["code_execution"] to enable batch analysis via
             Programmatic Tool Calling. Requires code_execution tool enabled.
-        include_examples: If True (default), includes input_examples for
-            +18% parameter accuracy per Anthropic's testing.
+        include_examples: If True, includes input_examples for +18% parameter
+            accuracy per Anthropic's testing. Default is False for standard API
+            compatibility. Set to True only when using the beta API:
+            client.beta.messages.create(betas=["advanced-tool-use-2025-11-20"], ...)
 
     Returns:
         Tool definition dict compatible with Anthropic's messages API.

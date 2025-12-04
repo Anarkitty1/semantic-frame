@@ -12,6 +12,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from semantic_frame.core.enums import (
+    AccelerationState,
     AnomalyState,
     CorrelationState,
     DataQuality,
@@ -95,6 +96,9 @@ class SemanticResult(BaseModel):
     )
     step_change_index: int | None = Field(
         default=None, description="Index where the step change occurred"
+    )
+    acceleration: AccelerationState | None = Field(
+        default=None, description="Rate of change classification (accelerating/decelerating/steady)"
     )
 
     # Detailed data

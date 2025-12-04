@@ -48,6 +48,7 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - The Universal Dictionary: universal-dictionary.md
+  - Threshold Tuning: threshold-tuning.md
   - Integrations: integrations.md
   - API Reference: api.md
 

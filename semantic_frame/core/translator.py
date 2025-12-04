@@ -15,10 +15,12 @@ import numpy as np
 
 from semantic_frame.core.analyzers import (
     assess_data_quality,
+    calc_acceleration,
     calc_distribution_shape,
     calc_linear_slope,
     calc_seasonality,
     calc_volatility,
+    classify_acceleration,
     classify_anomaly_state,
     classify_trend,
     detect_anomalies,
@@ -85,6 +87,12 @@ def analyze_series(
     anomaly_state = classify_anomaly_state(anomalies)
     _, data_quality = assess_data_quality(values)
 
+    # Acceleration analysis (rate of change in trend)
+    acceleration = None
+    if is_time_series and len(clean_values) >= 5:
+        accel_value = calc_acceleration(clean_values)
+        acceleration = classify_acceleration(accel_value)
+
     # Optional analyses
     seasonality = None
     if is_time_series and len(clean_values) >= 10:
@@ -111,6 +119,7 @@ def analyze_series(
         seasonality=seasonality,
         step_change=step_change,
         step_change_index=step_change_idx,
+        acceleration=acceleration,
     )
 
     # Calculate compression ratio
@@ -131,6 +140,7 @@ def analyze_series(
         distribution=distribution,
         step_change=step_change,
         step_change_index=step_change_idx,
+        acceleration=acceleration,
         profile=profile,
         context=context,
         compression_ratio=compression_ratio,

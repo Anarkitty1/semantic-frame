@@ -12,6 +12,8 @@ Key functions:
 - assess_data_quality: Assess data completeness
 - calc_seasonality: Cyclic pattern detection via autocorrelation
 - calc_distribution_shape: Distribution classification via skewness/kurtosis
+- calc_acceleration: Rate of change analysis (second derivative)
+- classify_acceleration: Classify acceleration based on normalized second derivative
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ import numpy as np
 from scipy.stats import kurtosis, pearsonr, skew
 
 from semantic_frame.core.enums import (
+    AccelerationState,
     AnomalyState,
     DataQuality,
     DistributionShape,
@@ -509,3 +512,75 @@ def detect_step_changes(
         return change_type, change_idx
 
     return StructuralChange.NONE, None
+
+
+def calc_acceleration(values: np.ndarray) -> float:
+    """Calculate normalized acceleration (second derivative) of the data.
+
+    Uses second-order polynomial fitting to estimate the rate of change
+    of the trend (acceleration/deceleration). This complements trend
+    analysis by capturing how the trend itself is changing.
+
+    The acceleration is normalized by data range and length squared to make
+    it scale-independent, similar to slope normalization.
+
+    Args:
+        values: NumPy array of numerical values.
+
+    Returns:
+        Normalized second derivative value.
+        Positive = trend is speeding up (accelerating growth or steepening decline)
+        Negative = trend is slowing down (decelerating)
+    """
+    if len(values) < 3:
+        return 0.0
+
+    # Check for constant data
+    data_range = float(np.ptp(values))
+    if data_range == 0:
+        return 0.0
+
+    x = np.arange(len(values))
+
+    # Fit second-order polynomial: ax^2 + bx + c
+    # The coefficient 'a' represents the curvature (second derivative / 2)
+    try:
+        coeffs = np.polyfit(x, values, 2)
+        # Second derivative of ax^2 + bx + c is 2a
+        second_derivative = 2 * coeffs[0]
+
+        # Normalize by data range and length squared for scale independence
+        # This ensures similar thresholds work across different data magnitudes
+        n = len(values)
+        normalized = float(second_derivative * (n**2) / data_range)
+
+        return normalized
+    except (np.linalg.LinAlgError, ValueError):
+        return 0.0
+
+
+def classify_acceleration(normalized_acceleration: float) -> AccelerationState:
+    """Classify acceleration based on normalized second derivative.
+
+    Thresholds (5 states to match TrendState granularity):
+        - > 0.3: ACCELERATING_SHARPLY
+        - > 0.1: ACCELERATING
+        - < -0.3: DECELERATING_SHARPLY
+        - < -0.1: DECELERATING
+        - else: STEADY
+
+    Args:
+        normalized_acceleration: Output from calc_acceleration.
+
+    Returns:
+        AccelerationState enum value.
+    """
+    if normalized_acceleration > 0.3:
+        return AccelerationState.ACCELERATING_SHARPLY
+    if normalized_acceleration > 0.1:
+        return AccelerationState.ACCELERATING
+    if normalized_acceleration < -0.3:
+        return AccelerationState.DECELERATING_SHARPLY
+    if normalized_acceleration < -0.1:
+        return AccelerationState.DECELERATING
+    return AccelerationState.STEADY

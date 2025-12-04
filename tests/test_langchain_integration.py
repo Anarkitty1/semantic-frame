@@ -46,6 +46,48 @@ class TestParseDataInput:
             _parse_data_input("not valid data")
 
 
+class TestParseDataInputEdgeCases:
+    """Tests for exception paths in _parse_data_input.
+
+    Covers lines 64-65, 71-72, 78-79: ValueError handling in each parser.
+    """
+
+    def test_json_with_non_numeric_values(self) -> None:
+        """JSON array with non-numeric strings should fail.
+
+        Tests lines 64-65: JSONDecodeError when parsing non-numeric JSON.
+        """
+        with pytest.raises(ValueError):
+            _parse_data_input('["a", "b", "c"]')
+
+    def test_csv_with_non_numeric_values(self) -> None:
+        """CSV with letters should fail.
+
+        Tests lines 71-72: CSV ValueError handling.
+        """
+        with pytest.raises(ValueError):
+            _parse_data_input("x, y, z")
+
+    def test_newline_with_non_numeric_values(self) -> None:
+        """Newline-separated with non-numeric should fail.
+
+        Tests lines 78-79: Newline ValueError handling.
+        """
+        with pytest.raises(ValueError):
+            _parse_data_input("one\ntwo\nthree")
+
+    def test_empty_string_raises_error(self) -> None:
+        """Empty string should raise ValueError."""
+        with pytest.raises(ValueError):
+            _parse_data_input("")
+
+    def test_all_parsers_fail(self) -> None:
+        """Should raise ValueError when all parsers fail."""
+        with pytest.raises(ValueError) as excinfo:
+            _parse_data_input("abc def ghi")
+        assert "parse" in str(excinfo.value).lower()
+
+
 class TestSemanticAnalysisTool:
     """Tests for SemanticAnalysisTool class."""
 

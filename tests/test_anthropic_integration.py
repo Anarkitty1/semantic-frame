@@ -170,16 +170,16 @@ class TestGetAnthropicTool:
         assert "description" in tool
         assert "input_schema" in tool
 
-    def test_includes_examples_by_default(self) -> None:
-        """Should include input_examples by default."""
+    def test_excludes_examples_by_default(self) -> None:
+        """Should exclude input_examples by default for standard API compatibility."""
         tool = get_anthropic_tool()
+        assert "input_examples" not in tool
+
+    def test_include_examples_when_requested(self) -> None:
+        """Should include examples when include_examples=True (for beta API)."""
+        tool = get_anthropic_tool(include_examples=True)
         assert "input_examples" in tool
         assert len(tool["input_examples"]) > 0
-
-    def test_exclude_examples_when_requested(self) -> None:
-        """Should exclude examples when include_examples=False."""
-        tool = get_anthropic_tool(include_examples=False)
-        assert "input_examples" not in tool
 
     def test_defer_loading_option(self) -> None:
         """Should add defer_loading when requested."""
@@ -475,8 +475,8 @@ class TestAnthropicSDKIntegration:
         assert "description" in tool
         assert "input_schema" in tool
 
-        # input_examples should be present by default
-        assert "input_examples" in tool
+        # input_examples should NOT be present by default (requires beta API)
+        assert "input_examples" not in tool
 
         # input_schema must be valid JSON Schema
         schema = tool["input_schema"]
