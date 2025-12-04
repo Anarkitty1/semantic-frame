@@ -82,7 +82,7 @@ def _to_numpy(data: ArrayLike) -> np.ndarray:
             return arr
         except (TypeError, ValueError) as e:
             raise TypeError(
-                f"List contains non-numeric values: {e}. " "Expected a list of numbers."
+                f"List contains non-numeric values: {e}. Expected a list of numbers."
             ) from e
 
     # Check for Pandas Series
@@ -206,7 +206,7 @@ def describe_series(
     # Validate output format
     if output not in VALID_OUTPUT_FORMATS:
         raise ValueError(
-            f"Invalid output format: {output!r}. " f"Expected one of: {VALID_OUTPUT_FORMATS}"
+            f"Invalid output format: {output!r}. Expected one of: {VALID_OUTPUT_FORMATS}"
         )
 
     # Convert to numpy
@@ -329,27 +329,73 @@ def describe_dataframe(
     )
 
 
-def compression_stats(original_data: ArrayLike, result: SemanticResult) -> dict[str, Any]:
+def compression_stats(
+    original_data: ArrayLike,
+    result: SemanticResult,
+    use_real_tokenizer: bool = False,
+) -> dict[str, Any]:
     """Calculate detailed compression statistics.
 
     Args:
         original_data: The original input data.
         result: The SemanticResult from describe_series.
+        use_real_tokenizer: If True, use tiktoken for accurate token counts.
+            Requires: pip install semantic-frame[validation]
 
     Returns:
-        Dict with compression statistics.
+        Dict with compression statistics including:
+        - original_data_points: Number of data points
+        - original_tokens_estimate: Estimated/actual tokens for original data
+        - narrative_tokens: Tokens in the narrative
+        - json_tokens: Tokens in the JSON output
+        - narrative_compression_ratio: Compression ratio for narrative
+        - json_compression_ratio: Compression ratio for JSON
+        - tokenizer: "estimate" or "tiktoken" depending on method used
     """
     values = _to_numpy(original_data)
 
-    # Estimate original token count (rough: 2 tokens per number)
-    original_tokens = len(values) * 2
+    if use_real_tokenizer:
+        try:
+            import json as json_module
 
-    # Narrative tokens (rough: 1 token per word)
-    narrative_tokens = len(result.narrative.split())
+            import tiktoken
 
-    # JSON output tokens
-    json_str = result.to_json_str()
-    json_tokens = len(json_str.split())
+            encoder = tiktoken.get_encoding("cl100k_base")
+
+            # Count tokens for original data formatted as JSON array
+            data_str = json_module.dumps(values.tolist())
+            original_tokens = len(encoder.encode(data_str))
+
+            # Count tokens for narrative
+            narrative_tokens = len(encoder.encode(result.narrative))
+
+            # Count tokens for JSON output
+            json_str = result.to_json_str()
+            json_tokens = len(encoder.encode(json_str))
+
+            tokenizer = "tiktoken"
+
+        except ImportError:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "tiktoken not available, falling back to estimate. "
+                "Install with: pip install semantic-frame[validation]"
+            )
+            use_real_tokenizer = False
+
+    if not use_real_tokenizer:
+        # Estimate original token count (rough: 2 tokens per number)
+        original_tokens = len(values) * 2
+
+        # Narrative tokens (rough: 1 token per word)
+        narrative_tokens = len(result.narrative.split())
+
+        # JSON output tokens
+        json_str = result.to_json_str()
+        json_tokens = len(json_str.split())
+
+        tokenizer = "estimate"
 
     return {
         "original_data_points": len(values),
@@ -358,4 +404,5 @@ def compression_stats(original_data: ArrayLike, result: SemanticResult) -> dict[
         "json_tokens": json_tokens,
         "narrative_compression_ratio": 1 - (narrative_tokens / max(original_tokens, 1)),
         "json_compression_ratio": 1 - (json_tokens / max(original_tokens, 1)),
+        "tokenizer": tokenizer,
     }
