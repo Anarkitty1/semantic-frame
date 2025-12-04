@@ -139,6 +139,71 @@ class TestDescribeBatch:
         result = describe_batch("{}")
         assert isinstance(result, str)
 
+    def test_output_format_text_default(self) -> None:
+        """Test text output format (default)."""
+        datasets = json.dumps({"cpu": [45, 47, 46, 48, 47]})
+        result = describe_batch(datasets)
+
+        # Default is text format
+        assert isinstance(result, str)
+        assert "cpu:" in result.lower()
+        # Should NOT be valid JSON
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(result)
+
+    def test_output_format_text_explicit(self) -> None:
+        """Test explicit text output format."""
+        datasets = json.dumps({"metric": [1, 2, 3, 4, 5]})
+        result = describe_batch(datasets, output_format="text")
+
+        assert isinstance(result, str)
+        assert "metric:" in result.lower()
+
+    def test_output_format_json(self) -> None:
+        """Test JSON output format."""
+        datasets = json.dumps({"cpu": [45, 47, 46, 48, 47], "memory": [60, 61, 60]})
+        result = describe_batch(datasets, output_format="json")
+
+        # Should be valid JSON
+        parsed = json.loads(result)
+        assert isinstance(parsed, dict)
+        assert "cpu" in parsed
+        assert "memory" in parsed
+        # Each result should have analysis fields
+        assert "narrative" in parsed["cpu"]
+        assert "trend" in parsed["cpu"]
+
+    def test_output_format_json_single_dataset(self) -> None:
+        """Test JSON output with single dataset."""
+        datasets = json.dumps({"temperature": [22.1, 22.3, 22.0, 22.2]})
+        result = describe_batch(datasets, output_format="json")
+
+        parsed = json.loads(result)
+        assert "temperature" in parsed
+        assert isinstance(parsed["temperature"], dict)
+
+    def test_output_format_invalid_falls_back_to_text(self) -> None:
+        """Test invalid output_format falls back to text."""
+        datasets = json.dumps({"data": [1, 2, 3]})
+        result = describe_batch(datasets, output_format="invalid_format")
+
+        # Should fall back to text format
+        assert isinstance(result, str)
+        assert "data:" in result.lower()
+
+    def test_output_format_text_vs_json_differ(self) -> None:
+        """Test that text and json outputs have different structure."""
+        datasets = json.dumps({"metric": [10, 20, 30, 40, 50]})
+
+        text_result = describe_batch(datasets, output_format="text")
+        json_result = describe_batch(datasets, output_format="json")
+
+        # They should be different
+        assert text_result != json_result
+        # JSON should be parseable
+        parsed = json.loads(json_result)
+        assert isinstance(parsed, dict)
+
 
 @pytest.mark.skipif(not mcp_available, reason="mcp not installed")
 class TestDescribeJson:

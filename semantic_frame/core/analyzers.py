@@ -341,7 +341,7 @@ def calc_distribution_shape(values: np.ndarray) -> DistributionShape:
     # Handle NaN results from near-constant data
     if np.isnan(s) or np.isnan(k):
         logger.debug(
-            "Distribution calculation returned NaN (skew=%s, kurtosis=%s), " "defaulting to NORMAL",
+            "Distribution calculation returned NaN (skew=%s, kurtosis=%s), defaulting to NORMAL",
             s,
             k,
         )

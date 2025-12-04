@@ -36,7 +36,7 @@ try:
     from mcp.server.fastmcp import FastMCP
 except ImportError:
     raise ImportError(
-        "mcp is required for this module. " "Install with: pip install semantic-frame[mcp]"
+        "mcp is required for this module. Install with: pip install semantic-frame[mcp]"
     )
 
 # Create the MCP server instance
@@ -149,17 +149,32 @@ def describe_batch(
     """
     from semantic_frame import describe_series
 
+    # Validate output_format
+    if output_format not in ("text", "json"):
+        output_format = "text"
+
     try:
         data_dict = json.loads(datasets)
-        results: list[str] = []
 
-        for name, values in data_dict.items():
-            if isinstance(values, str):
-                values = _parse_data_input(values)
-            result = describe_series(values, context=name, output="text")
-            results.append(f"{name}: {result}")
+        if output_format == "json":
+            # Return structured JSON with all results
+            json_results: dict[str, Any] = {}
+            for name, values in data_dict.items():
+                if isinstance(values, str):
+                    values = _parse_data_input(values)
+                result = describe_series(values, context=name, output="json")
+                json_results[name] = result
+            return json.dumps(json_results, indent=2)
+        else:
+            # Return text narratives
+            text_results: list[str] = []
+            for name, values in data_dict.items():
+                if isinstance(values, str):
+                    values = _parse_data_input(values)
+                text_result = describe_series(values, context=name, output="text")
+                text_results.append(f"{name}: {text_result}")
+            return "\n\n".join(text_results)
 
-        return "\n\n".join(results)
     except json.JSONDecodeError as e:
         return f"Error parsing datasets JSON: {str(e)}"
     except Exception as e:
