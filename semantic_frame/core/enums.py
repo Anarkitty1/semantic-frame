@@ -146,3 +146,25 @@ class StructuralChange(str, Enum):
     NONE = "no step change"
     STEP_UP = "step up"
     STEP_DOWN = "step down"
+
+
+class AccelerationState(str, Enum):
+    """Classification of rate of change in trend (second derivative).
+
+    Measures whether the trend is speeding up, slowing down, or constant.
+    This complements TrendState by capturing not just direction but how
+    that direction is changing over time.
+
+    Thresholds (normalized second derivative):
+        - ACCELERATING_SHARPLY: second_derivative > 0.3
+        - ACCELERATING: 0.1 < second_derivative <= 0.3
+        - STEADY: -0.1 <= second_derivative <= 0.1
+        - DECELERATING: -0.3 <= second_derivative < -0.1
+        - DECELERATING_SHARPLY: second_derivative < -0.3
+    """
+
+    ACCELERATING_SHARPLY = "rapidly accelerating"
+    ACCELERATING = "accelerating"
+    STEADY = "steady rate of change"
+    DECELERATING = "decelerating"
+    DECELERATING_SHARPLY = "rapidly decelerating"

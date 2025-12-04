@@ -8,6 +8,7 @@ sensor readings over time).
 from __future__ import annotations
 
 from semantic_frame.core.enums import (
+    AccelerationState,
     AnomalyState,
     DataQuality,
     SeasonalityState,
@@ -40,6 +41,7 @@ def generate_time_series_narrative(
     seasonality: SeasonalityState | None = None,
     step_change: StructuralChange | None = None,
     step_change_index: int | None = None,
+    acceleration: AccelerationState | None = None,
 ) -> str:
     """Generate a natural language description for time series data.
 
@@ -54,6 +56,7 @@ def generate_time_series_narrative(
         seasonality: Optional SeasonalityState enum.
         step_change: Optional StructuralChange enum.
         step_change_index: Optional index of step change.
+        acceleration: Optional AccelerationState enum.
 
     Returns:
         Semantic narrative string.
@@ -91,6 +94,10 @@ def generate_time_series_narrative(
                     positions=positions,
                 )
             )
+
+    # Acceleration (rate of change in trend) - only mention if not steady
+    if acceleration and acceleration != AccelerationState.STEADY:
+        parts.append(f" The trend is {acceleration.value}.")
 
     # Seasonality (if detected)
     if seasonality and seasonality != SeasonalityState.NONE:

@@ -213,3 +213,87 @@ class TestDistributionNarrator:
         )
 
         assert "outlier" in narrative.lower()
+
+    def test_left_skewed_distribution(self, sample_profile):
+        """Left-skewed distribution should mention skew direction.
+
+        Tests line 85: LEFT_SKEWED branch in distribution narrator.
+        """
+        narrative = generate_distribution_narrative(
+            distribution=DistributionShape.LEFT_SKEWED,
+            volatility=VolatilityState.STABLE,
+            anomaly_state=AnomalyState.NONE,
+            anomalies=[],
+            profile=sample_profile,
+        )
+
+        assert "left" in narrative.lower() and "skew" in narrative.lower()
+
+    def test_bimodal_distribution(self, sample_profile):
+        """Bimodal distribution should be mentioned.
+
+        Tests line 92: BIMODAL branch in distribution narrator.
+        """
+        narrative = generate_distribution_narrative(
+            distribution=DistributionShape.BIMODAL,
+            volatility=VolatilityState.STABLE,
+            anomaly_state=AnomalyState.NONE,
+            anomalies=[],
+            profile=sample_profile,
+        )
+
+        assert "bimodal" in narrative.lower()
+
+    def test_bimodal_with_anomalies(self, sample_profile, sample_anomalies):
+        """Bimodal distribution with anomalies.
+
+        Tests combined paths for bimodal and anomaly detection.
+        """
+        narrative = generate_distribution_narrative(
+            distribution=DistributionShape.BIMODAL,
+            volatility=VolatilityState.STABLE,
+            anomaly_state=AnomalyState.MINOR,
+            anomalies=sample_anomalies,
+            profile=sample_profile,
+        )
+
+        assert "bimodal" in narrative.lower()
+        assert "outlier" in narrative.lower()
+
+    def test_sparse_data_quality_warning(self):
+        """Sparse data quality should trigger warning.
+
+        Tests line 110: Data quality warning template.
+        """
+        sparse_profile = SeriesProfile(
+            count=100,
+            mean=50.0,
+            median=49.5,
+            std=10.0,
+            min=20.0,
+            max=80.0,
+            missing_pct=15.0,
+        )
+
+        narrative = generate_distribution_narrative(
+            distribution=DistributionShape.NORMAL,
+            volatility=VolatilityState.STABLE,
+            anomaly_state=AnomalyState.NONE,
+            anomalies=[],
+            profile=sparse_profile,
+            data_quality=DataQuality.SPARSE,
+        )
+
+        assert "sparse" in narrative.lower() or "missing" in narrative.lower()
+
+    def test_uniform_distribution(self, sample_profile):
+        """Uniform distribution should be mentioned."""
+        narrative = generate_distribution_narrative(
+            distribution=DistributionShape.UNIFORM,
+            volatility=VolatilityState.STABLE,
+            anomaly_state=AnomalyState.NONE,
+            anomalies=[],
+            profile=sample_profile,
+        )
+
+        assert "uniform" in narrative.lower()

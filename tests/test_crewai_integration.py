@@ -70,6 +70,65 @@ class TestSemanticAnalysisFunction:
         assert "Metrics" in result
 
 
+class TestParseDataInputEdgeCases:
+    """Tests for exception paths in _parse_data_input.
+
+    Covers lines 68-69, 75-76, 82-83: ValueError handling in each parser.
+    """
+
+    def test_json_decode_error_then_csv_parse(self) -> None:
+        """Malformed JSON should fall back to CSV parsing.
+
+        Tests lines 68-69: JSONDecodeError handling.
+        """
+        # This looks like JSON but isn't valid - should try CSV
+        result = _parse_data_input("1, 2, 3")
+        assert result == [1.0, 2.0, 3.0]
+
+    def test_all_parsers_fail_raises_error(self) -> None:
+        """Should raise ValueError when all parsers fail.
+
+        Tests the final raise at line 128.
+        """
+        with pytest.raises(ValueError) as excinfo:
+            _parse_data_input("abc, def, ghi")
+        assert "parse" in str(excinfo.value).lower()
+
+    def test_json_with_non_numeric_values(self) -> None:
+        """JSON array with non-numeric strings should fail all parsers.
+
+        Tests lines 75-76, 82-83: ValueError from float conversion.
+        """
+        with pytest.raises(ValueError):
+            _parse_data_input('["a", "b", "c"]')
+
+    def test_csv_with_non_numeric_values(self) -> None:
+        """CSV with letters should fail parsing.
+
+        Tests lines 75-76: CSV ValueError handling.
+        """
+        with pytest.raises(ValueError):
+            _parse_data_input("x, y, z")
+
+    def test_newline_with_non_numeric_values(self) -> None:
+        """Newline-separated with non-numeric should fail.
+
+        Tests lines 82-83: Newline ValueError handling.
+        """
+        with pytest.raises(ValueError):
+            _parse_data_input("one\ntwo\nthree")
+
+    def test_empty_string_raises_error(self) -> None:
+        """Empty string should raise ValueError."""
+        with pytest.raises(ValueError):
+            _parse_data_input("")
+
+    def test_whitespace_only_raises_error(self) -> None:
+        """Whitespace-only string should raise ValueError."""
+        with pytest.raises(ValueError):
+            _parse_data_input("   \n\t  ")
+
+
 class TestCrewAIIntegration:
     """Tests requiring crewai to be installed."""
 

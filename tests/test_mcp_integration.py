@@ -388,3 +388,207 @@ class TestGetMCPToolConfig:
         config = get_mcp_tool_config()
 
         assert "default_config" not in config
+
+
+@pytest.mark.skipif(not mcp_available, reason="mcp not installed")
+class TestParseDataInputEdgeCases:
+    """Tests for _parse_data_input error paths."""
+
+    def test_invalid_json_array_falls_through(self) -> None:
+        """Test that invalid JSON array falls through to other parsers.
+
+        Covers lines 63-64: JSONDecodeError/ValueError exception handling.
+        """
+        from semantic_frame.integrations.mcp import _parse_data_input
+
+        # Starts with [ but is not valid JSON - should try CSV next
+        # "[1, 2, abc]" would fail JSON parsing due to "abc"
+        # But since it has commas, CSV parsing will also fail on "abc"
+        with pytest.raises(ValueError, match="Could not parse"):
+            _parse_data_input("[1, 2, abc]")
+
+    def test_csv_with_invalid_values_falls_through(self) -> None:
+        """Test that CSV with non-numeric values falls through.
+
+        Covers lines 70-71: ValueError exception handling in CSV parsing.
+        """
+        from semantic_frame.integrations.mcp import _parse_data_input
+
+        # Has commas but contains non-numeric values
+        with pytest.raises(ValueError, match="Could not parse"):
+            _parse_data_input("hello, world, test")
+
+    def test_newline_with_invalid_values_falls_through(self) -> None:
+        """Test that newline-separated with non-numeric values falls through.
+
+        Covers lines 77-78: ValueError exception handling in newline parsing.
+        """
+        from semantic_frame.integrations.mcp import _parse_data_input
+
+        # Has newlines but contains non-numeric values, no commas
+        with pytest.raises(ValueError, match="Could not parse"):
+            _parse_data_input("hello\nworld\ntest")
+
+    def test_json_array_with_non_numeric_values(self) -> None:
+        """Test JSON array with strings instead of numbers.
+
+        Covers line 62-64: ValueError in float conversion.
+        """
+        from semantic_frame.integrations.mcp import _parse_data_input
+
+        # Valid JSON but can't convert to floats
+        with pytest.raises(ValueError, match="Could not parse"):
+            _parse_data_input('["a", "b", "c"]')
+
+
+@pytest.mark.skipif(not mcp_available, reason="mcp not installed")
+class TestDescribeBatchStringParsing:
+    """Tests for describe_batch with string values in datasets."""
+
+    def test_batch_with_string_values_text_format(self) -> None:
+        """Test batch with string-encoded data arrays in text format.
+
+        Covers line 173: _parse_data_input called for string values in text mode.
+        """
+        # Values as strings instead of arrays
+        datasets = json.dumps(
+            {
+                "cpu": "45, 47, 46, 48, 47",
+                "memory": "60, 61, 60, 61, 60",
+            }
+        )
+        result = describe_batch(datasets, output_format="text")
+
+        assert isinstance(result, str)
+        assert "cpu" in result.lower()
+        assert "memory" in result.lower()
+
+    def test_batch_with_string_values_json_format(self) -> None:
+        """Test batch with string-encoded data arrays in JSON format.
+
+        Covers line 164: _parse_data_input called for string values in JSON mode.
+        """
+        datasets = json.dumps(
+            {
+                "temperature": "[22.1, 22.3, 22.0, 22.2]",
+            }
+        )
+        result = describe_batch(datasets, output_format="json")
+
+        parsed = json.loads(result)
+        assert "temperature" in parsed
+        assert "narrative" in parsed["temperature"]
+
+    def test_batch_with_mixed_string_and_array_values(self) -> None:
+        """Test batch with mix of string and array values."""
+        datasets = json.dumps(
+            {
+                "cpu": [45, 47, 46],  # Array
+                "memory": "60, 61, 60",  # String
+            }
+        )
+        result = describe_batch(datasets, output_format="text")
+
+        assert "cpu" in result.lower()
+        assert "memory" in result.lower()
+
+
+@pytest.mark.skipif(not mcp_available, reason="mcp not installed")
+class TestDescribeBatchExceptionHandling:
+    """Tests for describe_batch exception handling paths."""
+
+    def test_batch_general_exception_handling(self) -> None:
+        """Test general exception handling in describe_batch.
+
+        Covers lines 180-181: General exception handling.
+        """
+        # Create a scenario that triggers a general exception
+        # Invalid data type that passes JSON parsing but fails analysis
+        datasets = json.dumps(
+            {
+                "bad_data": {"nested": "object"},  # Not a list or string of numbers
+            }
+        )
+        result = describe_batch(datasets, output_format="text")
+
+        assert "Error analyzing batch data" in result
+
+
+@pytest.mark.skipif(not mcp_available, reason="mcp not installed")
+class TestWrapForSemanticOutputEdgeCases:
+    """Tests for wrap_for_semantic_output edge cases."""
+
+    def test_wrap_returns_original_for_unexpected_type(self) -> None:
+        """Test that wrapper returns original for unexpected return types.
+
+        Covers line 268: Return str(result) when data can't be extracted.
+        """
+
+        @wrap_for_semantic_output(data_key="values")
+        def get_unexpected() -> str:
+            return "just a string"
+
+        result = get_unexpected()
+        assert result == "just a string"
+
+    def test_wrap_returns_original_for_dict_without_data_key(self) -> None:
+        """Test wrapper with dict missing the expected data key.
+
+        Covers line 268: Return str(result) when data_key not in dict.
+        """
+
+        @wrap_for_semantic_output(data_key="missing_key")
+        def get_wrong_key() -> dict:
+            return {"other_key": [1, 2, 3]}
+
+        result = get_wrong_key()
+        # Should return string representation of original
+        assert "other_key" in result
+
+    def test_wrap_handles_analysis_exception(self) -> None:
+        """Test that wrapper handles exceptions during analysis.
+
+        Covers lines 274-275: Exception handling in semantic conversion.
+        """
+
+        @wrap_for_semantic_output()
+        def get_bad_data() -> list:
+            return []  # Empty list may cause analysis issues
+
+        result = get_bad_data()
+        # Should either succeed with a message or return error message
+        assert isinstance(result, str)
+
+    def test_wrap_handles_exception_with_invalid_data(self) -> None:
+        """Test wrapper with data that causes describe_series to fail.
+
+        Covers lines 274-275: Exception in describe_series.
+        """
+
+        @wrap_for_semantic_output()
+        def get_invalid() -> list:
+            return [float("nan"), float("nan"), float("nan")]
+
+        result = get_invalid()
+        # Should handle gracefully - either succeed or error message
+        assert isinstance(result, str)
+
+    def test_wrap_handles_describe_series_exception(self) -> None:
+        """Test wrapper exception handling when describe_series raises.
+
+        Covers lines 274-275: Exception path in semantic conversion.
+        """
+        from unittest.mock import patch
+
+        @wrap_for_semantic_output()
+        def get_data() -> list[float]:
+            return [1.0, 2.0, 3.0]
+
+        # Mock describe_series at the source (imported inside the wrapper)
+        with patch("semantic_frame.describe_series") as mock_describe:
+            mock_describe.side_effect = RuntimeError("Mock analysis failure")
+            result = get_data()
+
+        assert "Error in semantic conversion" in result
+        assert "Mock analysis failure" in result
+        assert "Original" in result

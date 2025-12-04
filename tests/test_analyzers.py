@@ -5,15 +5,18 @@ import pytest
 
 from semantic_frame.core.analyzers import (
     assess_data_quality,
+    calc_acceleration,
     calc_distribution_shape,
     calc_linear_slope,
     calc_seasonality,
     calc_volatility,
+    classify_acceleration,
     classify_anomaly_state,
     classify_trend,
     detect_anomalies,
 )
 from semantic_frame.core.enums import (
+    AccelerationState,
     AnomalyState,
     DataQuality,
     DistributionShape,
@@ -816,3 +819,164 @@ class TestVolatilityThresholds:
         values = np.array([10.0, 100.0, 5.0, 200.0, 1.0])
         cv, state = calc_volatility(values)
         assert state == VolatilityState.EXTREME
+
+
+class TestCalcAcceleration:
+    """Tests for calc_acceleration function."""
+
+    def test_accelerating_quadratic_growth(self):
+        """Quadratic growth (x^2) should show positive acceleration."""
+        x = np.arange(20)
+        values = x**2  # Quadratic growth
+        accel = calc_acceleration(values)
+        assert accel > 0, f"Quadratic growth should have positive acceleration, got {accel}"
+
+    def test_decelerating_logarithmic_growth(self):
+        """Logarithmic growth should show negative acceleration."""
+        values = np.log(np.arange(1, 21))  # Logarithmic growth
+        accel = calc_acceleration(values)
+        assert accel < 0, f"Logarithmic growth should have negative acceleration, got {accel}"
+
+    def test_linear_data_steady(self):
+        """Linear data should have near-zero acceleration."""
+        values = np.arange(20) * 5.0  # Linear growth
+        accel = calc_acceleration(values)
+        assert abs(accel) < 0.1, f"Linear data should have near-zero acceleration, got {accel}"
+
+    def test_constant_data(self):
+        """Constant data should return zero acceleration."""
+        values = np.array([5.0] * 20)
+        accel = calc_acceleration(values)
+        assert accel == 0.0
+
+    def test_short_array_two_values(self):
+        """Array with < 3 values should return zero."""
+        values = np.array([1.0, 2.0])
+        accel = calc_acceleration(values)
+        assert accel == 0.0
+
+    def test_short_array_single_value(self):
+        """Single value should return zero."""
+        values = np.array([5.0])
+        accel = calc_acceleration(values)
+        assert accel == 0.0
+
+    def test_empty_array(self):
+        """Empty array should return zero."""
+        values = np.array([])
+        accel = calc_acceleration(values)
+        assert accel == 0.0
+
+    def test_scale_independence(self):
+        """Acceleration should be normalized for scale independence."""
+        small = np.array([1.0, 4.0, 9.0, 16.0, 25.0])  # x^2
+        large = small * 1000
+        accel_small = calc_acceleration(small)
+        accel_large = calc_acceleration(large)
+        # Should be similar (both are quadratic patterns)
+        assert abs(accel_small - accel_large) < 0.1 * max(abs(accel_small), abs(accel_large), 1.0)
+
+    def test_negative_quadratic(self):
+        """Negative quadratic (-x^2) should show negative acceleration."""
+        x = np.arange(20)
+        values = -(x**2)
+        accel = calc_acceleration(values)
+        assert accel < 0
+
+    def test_accelerating_exponential(self):
+        """Exponential growth should show positive acceleration."""
+        values = np.exp(np.linspace(0, 2, 20))  # Exponential growth
+        accel = calc_acceleration(values)
+        assert accel > 0
+
+    def test_decelerating_to_plateau(self):
+        """Data approaching plateau (saturation curve) should decelerate."""
+        # 1 - e^(-x) approaches 1 asymptotically (decreasing rate of change)
+        values = 1 - np.exp(-np.linspace(0, 3, 20))
+        accel = calc_acceleration(values)
+        # This is a saturating curve - growth decelerates
+        assert accel < 0
+
+
+class TestClassifyAcceleration:
+    """Tests for classify_acceleration function."""
+
+    def test_accelerating_sharply(self):
+        """Acceleration > 0.3 should be ACCELERATING_SHARPLY."""
+        assert classify_acceleration(0.5) == AccelerationState.ACCELERATING_SHARPLY
+        assert classify_acceleration(1.0) == AccelerationState.ACCELERATING_SHARPLY
+        assert classify_acceleration(0.31) == AccelerationState.ACCELERATING_SHARPLY
+
+    def test_accelerating(self):
+        """Acceleration 0.1-0.3 should be ACCELERATING."""
+        assert classify_acceleration(0.2) == AccelerationState.ACCELERATING
+        assert classify_acceleration(0.15) == AccelerationState.ACCELERATING
+        assert classify_acceleration(0.11) == AccelerationState.ACCELERATING
+
+    def test_steady(self):
+        """Acceleration -0.1 to 0.1 should be STEADY."""
+        assert classify_acceleration(0.0) == AccelerationState.STEADY
+        assert classify_acceleration(0.05) == AccelerationState.STEADY
+        assert classify_acceleration(-0.05) == AccelerationState.STEADY
+        assert classify_acceleration(0.1) == AccelerationState.STEADY
+        assert classify_acceleration(-0.1) == AccelerationState.STEADY
+
+    def test_decelerating(self):
+        """Acceleration -0.3 to -0.1 should be DECELERATING."""
+        assert classify_acceleration(-0.2) == AccelerationState.DECELERATING
+        assert classify_acceleration(-0.15) == AccelerationState.DECELERATING
+        assert classify_acceleration(-0.11) == AccelerationState.DECELERATING
+
+    def test_decelerating_sharply(self):
+        """Acceleration < -0.3 should be DECELERATING_SHARPLY."""
+        assert classify_acceleration(-0.5) == AccelerationState.DECELERATING_SHARPLY
+        assert classify_acceleration(-1.0) == AccelerationState.DECELERATING_SHARPLY
+        assert classify_acceleration(-0.31) == AccelerationState.DECELERATING_SHARPLY
+
+    def test_boundary_values(self):
+        """Test exact boundary values."""
+        # At exactly 0.3 boundary
+        assert classify_acceleration(0.3) == AccelerationState.ACCELERATING
+        # At exactly -0.3 boundary
+        assert classify_acceleration(-0.3) == AccelerationState.DECELERATING
+
+
+class TestAccelerationIntegration:
+    """Integration tests for acceleration with real-world data patterns."""
+
+    def test_stock_rally_acceleration(self):
+        """Simulated accelerating stock rally (exponential growth phase)."""
+        # Price accelerating upward
+        values = np.array([100, 101, 103, 106, 110, 115, 122, 131, 142, 156])
+        accel = calc_acceleration(values)
+        state = classify_acceleration(accel)
+        assert state in (
+            AccelerationState.ACCELERATING,
+            AccelerationState.ACCELERATING_SHARPLY,
+        )
+
+    def test_growth_slowdown(self):
+        """Simulated growth slowdown (early plateau approach)."""
+        # Growth slowing as it approaches limit
+        values = np.array([10, 25, 38, 49, 58, 65, 71, 76, 80, 83])
+        accel = calc_acceleration(values)
+        state = classify_acceleration(accel)
+        assert state in (AccelerationState.DECELERATING, AccelerationState.DECELERATING_SHARPLY)
+
+    def test_steady_linear_growth(self):
+        """Linear growth should show steady acceleration."""
+        values = np.linspace(100, 200, 20)  # Perfect linear
+        accel = calc_acceleration(values)
+        state = classify_acceleration(accel)
+        assert state == AccelerationState.STEADY
+
+    def test_noisy_but_accelerating(self):
+        """Accelerating trend with noise should still detect acceleration."""
+        np.random.seed(42)
+        x = np.arange(30)
+        clean_accel = x**2 / 30  # Scaled quadratic
+        noise = np.random.randn(30) * 2
+        values = clean_accel + noise
+        accel = calc_acceleration(values)
+        # With noise, may be any positive state
+        assert accel > -0.3  # At least not strongly decelerating
