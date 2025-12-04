@@ -267,7 +267,7 @@ def describe_dataframe(
         for col_name in df.columns:
             dtype = df[col_name].dtype
             # Check if numeric (int, float types)
-            if dtype.is_numeric():
+            if dtype.is_numeric():  # type: ignore[union-attr]
                 col_context = f"{context} - {col_name}" if context else col_name
                 values = df[col_name].to_numpy()
                 values_dict[col_name] = values.astype(float)

@@ -227,20 +227,63 @@ Compression: 99.9% token reduction
 
 ---
 
-## 10. Future Enhancements
+## 10. Anthropic Advanced Tool Use Integration [COMPLETE]
+
+**Goal:** Support Anthropic's Advanced Tool Use features for production-scale agent deployments.
+
+**Reference:** [Anthropic Advanced Tool Use Blog](https://www.anthropic.com/engineering/advanced-tool-use)
+
+**Completed Tasks:**
+
+1. **[x] Tool Use Examples** (`semantic_frame/integrations/anthropic.py`)
+   - 5 curated examples covering anomalies, trends, JSON output, minimal input, volatile data
+   - +18% parameter accuracy per Anthropic's testing
+   - Included by default via `get_anthropic_tool()`
+
+2. **[x] Deferred Loading Support**
+   - `get_tool_for_discovery()` returns tool with `defer_loading=True`
+   - Enables Tool Search discovery for 1000+ tool agents
+   - Keeps context window lean
+
+3. **[x] Programmatic Tool Calling**
+   - `get_tool_for_batch_processing()` with `allowed_callers=["code_execution"]`
+   - `handle_batch_tool_calls()` for parallel processing
+   - Enables Claude to call tool from code for batch analysis
+
+4. **[x] Convenience Functions**
+   - `get_advanced_tool()` - All features enabled
+   - `AnthropicSemanticTool` class with batch handling
+
+5. **[x] MCP Wrapper Utilities** (`semantic_frame/integrations/mcp_wrapper.py`)
+   - `@wrap_numeric_output()` decorator for any function
+   - `transform_to_semantic()` for one-off transformations
+   - `SemanticMCPWrapper` class for MCP server integration
+   - Dynamic context extraction from dict keys
+
+6. **[x] Comprehensive Documentation**
+   - `docs/advanced-tool-use.md` - Full integration guide
+   - Updated README with Advanced Tool Use section
+   - API reference and best practices
+
+7. **[x] Tests**
+   - `tests/test_anthropic_integration.py` - 58 tests for advanced features
+   - `tests/test_mcp_wrapper.py` - 35 tests for wrapper utilities
+
+---
+
+## 11. Future Enhancements
 
 | Priority | Task | Status |
 |----------|------|--------|
 | 1 | ElizaOS integration | Not Started |
-| 2 | Update README with integration examples | Not Started |
-| 3 | Add integration guide to docs/ | Not Started |
-| 4 | Additional framework integrations | Not Started |
+| 2 | Think Tool integration pattern | Not Started |
+| 3 | PyPI release with advanced features | Ready |
 
 ---
 
 ## Test Results
 
-- **176 tests passing** (3 skipped - optional deps not installed)
+- **301 tests passing** (3 skipped - optional deps not installed)
 - **89% code coverage**
 - **All linting passes** (ruff)
 - **Package builds successfully**
@@ -249,4 +292,4 @@ Compression: 99.9% token reduction
 
 **You have built the Compression Algorithm for Intelligence.**
 
-**Status: FEATURE COMPLETE**
+**Status: ADVANCED TOOL USE COMPLETE**

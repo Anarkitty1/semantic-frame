@@ -1,6 +1,8 @@
 """Tests for Anthropic native tool integration.
 
-These tests validate the Anthropic tool wrapper functionality.
+These tests validate the Anthropic tool wrapper functionality,
+including Advanced Tool Use features (Tool Search, Programmatic Calling, Examples).
+
 Tests that require the anthropic SDK are skipped if not available.
 """
 
@@ -10,10 +12,15 @@ import pytest
 
 from semantic_frame.integrations.anthropic import (
     ANTHROPIC_TOOL_SCHEMA,
+    TOOL_USE_EXAMPLES,
     AnthropicSemanticTool,
     _parse_data_input,
     create_tool_result,
+    get_advanced_tool,
     get_anthropic_tool,
+    get_tool_for_batch_processing,
+    get_tool_for_discovery,
+    handle_batch_tool_calls,
     handle_tool_call,
 )
 
@@ -105,6 +112,42 @@ class TestAnthropicToolSchema:
         assert "output_format" in props
 
 
+class TestToolUseExamples:
+    """Tests for the input_examples feature."""
+
+    def test_examples_exist(self) -> None:
+        """Should have examples defined."""
+        assert len(TOOL_USE_EXAMPLES) > 0
+
+    def test_examples_have_required_structure(self) -> None:
+        """Each example should have input and expected_output."""
+        for example in TOOL_USE_EXAMPLES:
+            assert "input" in example
+            assert "expected_output" in example
+
+    def test_examples_have_valid_inputs(self) -> None:
+        """Example inputs should have data array."""
+        for example in TOOL_USE_EXAMPLES:
+            input_data = example["input"]
+            assert "data" in input_data
+            assert isinstance(input_data["data"], list)
+            assert all(isinstance(x, int | float) for x in input_data["data"])
+
+    def test_examples_cover_different_scenarios(self) -> None:
+        """Examples should cover various use cases."""
+        contexts = [ex.get("input", {}).get("context") for ex in TOOL_USE_EXAMPLES]
+        # Should have some with context and some without
+        assert any(c is not None for c in contexts)
+        assert any(c is None for c in contexts)
+
+    def test_example_with_json_output(self) -> None:
+        """Should have at least one JSON output example."""
+        has_json = any(
+            ex.get("input", {}).get("output_format") == "json" for ex in TOOL_USE_EXAMPLES
+        )
+        assert has_json
+
+
 class TestGetAnthropicTool:
     """Tests for get_anthropic_tool function."""
 
@@ -126,6 +169,60 @@ class TestGetAnthropicTool:
         assert "name" in tool
         assert "description" in tool
         assert "input_schema" in tool
+
+    def test_includes_examples_by_default(self) -> None:
+        """Should include input_examples by default."""
+        tool = get_anthropic_tool()
+        assert "input_examples" in tool
+        assert len(tool["input_examples"]) > 0
+
+    def test_exclude_examples_when_requested(self) -> None:
+        """Should exclude examples when include_examples=False."""
+        tool = get_anthropic_tool(include_examples=False)
+        assert "input_examples" not in tool
+
+    def test_defer_loading_option(self) -> None:
+        """Should add defer_loading when requested."""
+        tool = get_anthropic_tool(defer_loading=True)
+        assert tool.get("defer_loading") is True
+
+    def test_no_defer_loading_by_default(self) -> None:
+        """Should not have defer_loading by default."""
+        tool = get_anthropic_tool()
+        assert "defer_loading" not in tool or tool.get("defer_loading") is False
+
+    def test_allowed_callers_option(self) -> None:
+        """Should add allowed_callers when requested."""
+        tool = get_anthropic_tool(allowed_callers=["code_execution"])
+        assert tool.get("allowed_callers") == ["code_execution"]
+
+    def test_no_allowed_callers_by_default(self) -> None:
+        """Should not have allowed_callers by default."""
+        tool = get_anthropic_tool()
+        assert "allowed_callers" not in tool
+
+
+class TestAdvancedToolGetters:
+    """Tests for convenience functions for advanced tool use."""
+
+    def test_get_tool_for_discovery(self) -> None:
+        """Should return tool with defer_loading=True."""
+        tool = get_tool_for_discovery()
+        assert tool.get("defer_loading") is True
+        assert "input_examples" in tool
+
+    def test_get_tool_for_batch_processing(self) -> None:
+        """Should return tool with code_execution caller."""
+        tool = get_tool_for_batch_processing()
+        assert tool.get("allowed_callers") == ["code_execution"]
+        assert "input_examples" in tool
+
+    def test_get_advanced_tool(self) -> None:
+        """Should return tool with all advanced features."""
+        tool = get_advanced_tool()
+        assert tool.get("defer_loading") is True
+        assert tool.get("allowed_callers") == ["code_execution"]
+        assert "input_examples" in tool
 
 
 class TestHandleToolCall:
@@ -201,6 +298,48 @@ class TestHandleToolCall:
         assert isinstance(result, str)
 
 
+class TestHandleBatchToolCalls:
+    """Tests for handle_batch_tool_calls function."""
+
+    def test_batch_single_input(self) -> None:
+        """Should handle single input in batch."""
+        inputs = [{"data": [1, 2, 3, 4, 5], "context": "Series A"}]
+        results = handle_batch_tool_calls(inputs)
+
+        assert len(results) == 1
+        assert "Series A" in results[0]
+
+    def test_batch_multiple_inputs(self) -> None:
+        """Should handle multiple inputs in batch."""
+        inputs = [
+            {"data": [1, 2, 3, 4, 5], "context": "Series A"},
+            {"data": [10, 20, 30, 40, 50], "context": "Series B"},
+            {"data": [100, 99, 100, 101, 100], "context": "Series C"},
+        ]
+        results = handle_batch_tool_calls(inputs)
+
+        assert len(results) == 3
+        assert "Series A" in results[0]
+        assert "Series B" in results[1]
+        assert "Series C" in results[2]
+
+    def test_batch_with_default_context(self) -> None:
+        """Should apply default context to all inputs."""
+        inputs = [
+            {"data": [1, 2, 3]},
+            {"data": [4, 5, 6]},
+        ]
+        results = handle_batch_tool_calls(inputs, default_context="Batch Context")
+
+        assert "Batch Context" in results[0]
+        assert "Batch Context" in results[1]
+
+    def test_batch_empty_list(self) -> None:
+        """Should handle empty input list."""
+        results = handle_batch_tool_calls([])
+        assert results == []
+
+
 class TestCreateToolResult:
     """Tests for create_tool_result function."""
 
@@ -238,6 +377,18 @@ class TestAnthropicSemanticTool:
         tool = AnthropicSemanticTool(context="Sensor Data")
         assert tool.context == "Sensor Data"
 
+    def test_initialization_with_advanced_options(self) -> None:
+        """Should store advanced tool use options."""
+        tool = AnthropicSemanticTool(
+            context="Test",
+            defer_loading=True,
+            allowed_callers=["code_execution"],
+            include_examples=False,
+        )
+        assert tool.defer_loading is True
+        assert tool.allowed_callers == ["code_execution"]
+        assert tool.include_examples is False
+
     def test_get_tool(self) -> None:
         """Should return tool definition."""
         tool = AnthropicSemanticTool()
@@ -245,6 +396,17 @@ class TestAnthropicSemanticTool:
 
         assert isinstance(definition, dict)
         assert definition["name"] == "semantic_analysis"
+
+    def test_get_tool_with_advanced_options(self) -> None:
+        """Should return tool with advanced options."""
+        tool = AnthropicSemanticTool(
+            defer_loading=True,
+            allowed_callers=["code_execution"],
+        )
+        definition = tool.get_tool()
+
+        assert definition.get("defer_loading") is True
+        assert definition.get("allowed_callers") == ["code_execution"]
 
     def test_handle(self) -> None:
         """Should handle tool input."""
@@ -260,6 +422,18 @@ class TestAnthropicSemanticTool:
         result = tool.handle({"data": [1, 2, 3], "context": "Override"})
 
         assert "Override" in result
+
+    def test_handle_batch(self) -> None:
+        """Should handle batch tool calls."""
+        tool = AnthropicSemanticTool(context="Batch Default")
+        inputs = [
+            {"data": [1, 2, 3]},
+            {"data": [4, 5, 6]},
+        ]
+        results = tool.handle_batch(inputs)
+
+        assert len(results) == 2
+        assert all("Batch Default" in r for r in results)
 
     def test_create_result(self) -> None:
         """Should create tool result."""
@@ -301,6 +475,9 @@ class TestAnthropicSDKIntegration:
         assert "description" in tool
         assert "input_schema" in tool
 
+        # input_examples should be present by default
+        assert "input_examples" in tool
+
         # input_schema must be valid JSON Schema
         schema = tool["input_schema"]
         assert schema["type"] == "object"
@@ -308,3 +485,22 @@ class TestAnthropicSDKIntegration:
 
         # Name must be valid identifier
         assert tool["name"].replace("_", "").isalnum()
+
+    def test_advanced_tool_schema_format(self) -> None:
+        """Advanced tool schema should have all beta fields."""
+        tool = get_advanced_tool()
+
+        # Standard fields
+        assert "name" in tool
+        assert "description" in tool
+        assert "input_schema" in tool
+
+        # Advanced Tool Use fields
+        assert "defer_loading" in tool
+        assert "allowed_callers" in tool
+        assert "input_examples" in tool
+
+        # Values
+        assert tool["defer_loading"] is True
+        assert "code_execution" in tool["allowed_callers"]
+        assert len(tool["input_examples"]) >= 3
