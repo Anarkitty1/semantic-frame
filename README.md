@@ -211,7 +211,26 @@ mcp run semantic_frame.integrations.mcp:mcp
 Exposes `describe_data` tool for MCP clients like:
 - **ElizaOS**: TypeScript-based agent framework
 - **Claude Desktop**: Anthropic's desktop app
+- **Claude Code**: Anthropic's CLI for Claude
 - Any MCP-compatible client
+
+### Claude Code
+
+Add Semantic Frame as a native tool in [Claude Code](https://claude.ai/code):
+
+```bash
+# Install MCP dependencies
+pip install semantic-frame[mcp]
+
+# Add MCP server to Claude Code
+claude mcp add semantic-frame -- uv run --project /path/to/semantic-frame mcp run /path/to/semantic-frame/semantic_frame/integrations/mcp.py
+
+# Restart Claude Code, then verify connection
+claude mcp list
+# semantic-frame: ... - ✓ Connected
+```
+
+Once configured, ask Claude to analyze data and it will use the `describe_data` tool automatically.
 
 ## Use Cases
 

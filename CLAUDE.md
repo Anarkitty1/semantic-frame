@@ -156,7 +156,10 @@ Optional dependencies for agent frameworks:
 - **CrewAI**: `pip install semantic-frame[crewai]` → `get_crewai_tool()` in `integrations/crewai.py`
 - **MCP**: `pip install semantic-frame[mcp]` → FastMCP server in `integrations/mcp.py`
   - Run: `mcp run semantic_frame.integrations.mcp:mcp`
-  - Exposes `describe_data` tool for MCP clients (Claude Desktop, ElizaOS)
+  - Exposes `describe_data` tool for MCP clients (Claude Desktop, ElizaOS, Claude Code)
+- **Claude Code**: Add as MCP server for native tool access in Claude Code CLI
+  - Run: `claude mcp add semantic-frame -- uv run --project /path/to/semantic-frame mcp run /path/to/semantic-frame/semantic_frame/integrations/mcp.py`
+  - Restart Claude Code, then use `mcp__semantic-frame__describe_data` tool
 
 All integrations use lazy imports and provide helpful errors if dependencies are missing.
 
