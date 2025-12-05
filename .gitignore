@@ -10,3 +10,11 @@ wheels/
 .venv
 .coverage
 site/
+
+# Claude Code
+.claude/
+
+# uv lock file (not needed for libraries)
+uv.lock
+docs/trading-enhancements-roadmap.md
+docs/MONETIZATION_IDEAS.md
