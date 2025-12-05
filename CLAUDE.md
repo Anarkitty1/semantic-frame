@@ -168,3 +168,45 @@ All integrations use lazy imports and provide helpful errors if dependencies are
 Core: numpy, pandas, polars, scipy, pydantic
 Dev: pytest, pytest-cov, pytest-asyncio, mypy, ruff, pre-commit
 Optional: anthropic, langchain, crewai, mcp (for agent framework integrations)
+
+## Releasing to PyPI
+
+The project uses GitHub Actions with trusted publishing for automated PyPI releases.
+
+### Release Workflow
+
+1. **Merge feature branches** to `master` via PR
+2. **Bump version** in two places:
+   - `pyproject.toml`: `version = "X.Y.Z"`
+   - `semantic_frame/__init__.py`: `__version__ = "X.Y.Z"`
+3. **Update CHANGELOG.md** with release notes
+4. **Commit and push** to `master`
+5. **Create GitHub Release**:
+   - Go to https://github.com/Anarkitty1/semantic-frame/releases/new
+   - Tag: `vX.Y.Z` (e.g., `v0.3.0`)
+   - Title: `vX.Y.Z`
+   - Description: Copy from CHANGELOG.md
+   - Click "Publish release"
+
+The GitHub Actions workflow (`.github/workflows/publish.yml`) automatically:
+- Runs tests
+- Builds the package
+- Publishes to PyPI via trusted publishing (no API tokens needed)
+
+### Manual Release (if needed)
+
+```bash
+# Run release script
+./scripts/release.sh
+
+# Upload to TestPyPI first
+uv run twine upload --repository testpypi dist/*
+
+# Upload to production PyPI
+uv run twine upload dist/*
+```
+
+### PyPI Links
+
+- Package: https://pypi.org/project/semantic-frame/
+- Trusted Publishing: https://pypi.org/manage/project/semantic-frame/settings/publishing/
