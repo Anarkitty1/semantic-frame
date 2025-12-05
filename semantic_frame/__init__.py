@@ -23,7 +23,7 @@ For Advanced Tool Use:
     >>> tool = get_advanced_tool()  # All beta features enabled
 """
 
-from semantic_frame.main import describe_dataframe, describe_series
+from semantic_frame.main import compression_stats, describe_dataframe, describe_series
 
 __version__ = "0.2.0"
-__all__ = ["describe_series", "describe_dataframe", "__version__"]
+__all__ = ["describe_series", "describe_dataframe", "compression_stats", "__version__"]

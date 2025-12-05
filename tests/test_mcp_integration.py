@@ -4,6 +4,9 @@ Tests for the Model Context Protocol server including:
 - describe_data: Single series analysis
 - describe_batch: Batch analysis
 - describe_json: JSON output format
+- describe_dataframe: Multi-column analysis with correlations
+- describe_correlations: Cross-column relationship analysis
+- compression_stats: Token compression metrics
 - wrap_for_semantic_output: Decorator for existing tools
 - create_semantic_tool: Factory for semantic tools
 """
@@ -15,9 +18,12 @@ import pytest
 # Skip tests if mcp is not installed
 try:
     from semantic_frame.integrations.mcp import (
+        compression_stats,
         create_semantic_tool,
         describe_batch,
+        describe_correlations,
         describe_data,
+        describe_dataframe,
         describe_json,
         get_mcp_tool_config,
         mcp,
@@ -45,6 +51,9 @@ class TestMCPServer:
         assert "describe_data" in tool_names
         assert "describe_batch" in tool_names
         assert "describe_json" in tool_names
+        assert "describe_dataframe" in tool_names
+        assert "describe_correlations" in tool_names
+        assert "compression_stats" in tool_names
 
 
 @pytest.mark.skipif(not mcp_available, reason="mcp not installed")
@@ -592,3 +601,229 @@ class TestWrapForSemanticOutputEdgeCases:
         assert "Error in semantic conversion" in result
         assert "Mock analysis failure" in result
         assert "Original" in result
+
+
+@pytest.mark.skipif(not mcp_available, reason="mcp not installed")
+class TestDescribeDataframe:
+    """Tests for describe_dataframe MCP tool."""
+
+    def test_basic_dataframe_analysis(self) -> None:
+        """Test basic multi-column analysis."""
+        datasets = json.dumps(
+            {
+                "sales": [100, 200, 300, 400, 500],
+                "inventory": [500, 400, 300, 200, 100],
+            }
+        )
+        result = describe_dataframe(datasets, context="Retail Metrics")
+
+        assert isinstance(result, str)
+        assert "sales" in result.lower()
+        assert "inventory" in result.lower()
+
+    def test_correlation_detection(self) -> None:
+        """Test that correlations are detected."""
+        datasets = json.dumps(
+            {
+                "price": [10, 20, 30, 40, 50],
+                "demand": [100, 80, 60, 40, 20],  # Perfectly inverse
+            }
+        )
+        result = describe_dataframe(datasets, correlation_threshold=0.5)
+
+        assert "correlation" in result.lower()
+
+    def test_custom_correlation_threshold(self) -> None:
+        """Test custom correlation threshold."""
+        datasets = json.dumps(
+            {
+                "a": [1, 2, 3, 4, 5],
+                "b": [1.1, 2.2, 2.9, 4.1, 5.0],  # Strongly correlated
+            }
+        )
+        # Low threshold should find the correlation
+        result = describe_dataframe(datasets, correlation_threshold=0.3)
+        assert isinstance(result, str)
+
+    def test_json_parse_error(self) -> None:
+        """Test error handling for invalid JSON."""
+        result = describe_dataframe("not valid json")
+        assert "Error parsing datasets JSON" in result
+
+    def test_empty_numeric_columns(self) -> None:
+        """Test handling when no numeric columns available."""
+        # Nested object results in no numeric columns
+        datasets = json.dumps(
+            {
+                "bad": {"nested": "object"},
+            }
+        )
+        result = describe_dataframe(datasets)
+        # Should handle gracefully (0 numeric columns analyzed)
+        assert "0 numeric column" in result.lower() or isinstance(result, str)
+
+
+@pytest.mark.skipif(not mcp_available, reason="mcp not installed")
+class TestDescribeCorrelations:
+    """Tests for describe_correlations MCP tool."""
+
+    def test_strong_negative_correlation(self) -> None:
+        """Test detection of strong negative correlation."""
+        datasets = json.dumps(
+            {
+                "price": [10, 20, 30, 40, 50],
+                "demand": [100, 80, 60, 40, 20],
+            }
+        )
+        result = describe_correlations(datasets)
+
+        assert "significant correlation" in result.lower()
+        assert "inverse" in result.lower() or "negative" in result.lower()
+
+    def test_strong_positive_correlation(self) -> None:
+        """Test detection of strong positive correlation."""
+        datasets = json.dumps(
+            {
+                "height": [150, 160, 170, 180, 190],
+                "weight": [50, 60, 70, 80, 90],
+            }
+        )
+        result = describe_correlations(datasets)
+
+        assert "significant correlation" in result.lower()
+
+    def test_no_significant_correlation(self) -> None:
+        """Test when no significant correlations found."""
+        # Random uncorrelated data
+        datasets = json.dumps(
+            {
+                "a": [1, 5, 2, 4, 3],
+                "b": [3, 1, 4, 2, 5],
+            }
+        )
+        result = describe_correlations(datasets, threshold=0.9)
+
+        assert "no significant correlations" in result.lower()
+
+    def test_spearman_method(self) -> None:
+        """Test Spearman correlation method."""
+        datasets = json.dumps(
+            {
+                "x": [1, 2, 3, 4, 5],
+                "y": [1, 4, 9, 16, 25],  # Quadratic but monotonic
+            }
+        )
+        result = describe_correlations(datasets, method="spearman")
+
+        assert isinstance(result, str)
+        assert "significant" in result.lower() or "no significant" in result.lower()
+
+    def test_custom_threshold(self) -> None:
+        """Test custom correlation threshold."""
+        datasets = json.dumps(
+            {
+                "a": [1, 2, 3, 4, 5],
+                "b": [1.5, 2.5, 3.5, 4.5, 5.5],
+            }
+        )
+        result = describe_correlations(datasets, threshold=0.3)
+        assert isinstance(result, str)
+
+    def test_insufficient_columns(self) -> None:
+        """Test error when fewer than 2 columns provided."""
+        datasets = json.dumps(
+            {
+                "only_one": [1, 2, 3, 4, 5],
+            }
+        )
+        result = describe_correlations(datasets)
+        assert "need at least 2 columns" in result.lower()
+
+    def test_json_parse_error(self) -> None:
+        """Test error handling for invalid JSON."""
+        result = describe_correlations("not valid json")
+        assert "Error parsing datasets JSON" in result
+
+    def test_string_values_parsing(self) -> None:
+        """Test that string-encoded values are parsed correctly."""
+        datasets = json.dumps(
+            {
+                "a": "1, 2, 3, 4, 5",
+                "b": "5, 4, 3, 2, 1",
+            }
+        )
+        result = describe_correlations(datasets)
+
+        assert "significant correlation" in result.lower()
+
+
+@pytest.mark.skipif(not mcp_available, reason="mcp not installed")
+class TestCompressionStats:
+    """Tests for compression_stats MCP tool."""
+
+    def test_basic_compression_stats(self) -> None:
+        """Test basic compression statistics."""
+        data = json.dumps([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        result = compression_stats(data, context="Test Data")
+
+        assert "Compression Stats" in result
+        assert "Test Data" in result
+        assert "data points" in result
+        assert "tokens" in result.lower()
+
+    def test_large_data_compression(self) -> None:
+        """Test compression with larger dataset."""
+        # Generate 100 data points
+        data = json.dumps(list(range(100)))
+        result = compression_stats(data)
+
+        assert "100 data points" in result
+        assert "compression" in result.lower()
+
+    def test_csv_input(self) -> None:
+        """Test with CSV input format."""
+        data = "10, 20, 30, 40, 50"
+        result = compression_stats(data, context="CSV Data")
+
+        assert "Compression Stats" in result
+        assert "CSV Data" in result
+
+    def test_includes_narrative(self) -> None:
+        """Test that result includes the narrative."""
+        data = "[100, 200, 300, 400, 500]"
+        result = compression_stats(data)
+
+        assert "Narrative:" in result
+
+    def test_error_handling(self) -> None:
+        """Test error handling for invalid input."""
+        result = compression_stats("not valid data")
+        assert "Error" in result
+
+
+@pytest.mark.skipif(not mcp_available, reason="mcp not installed")
+class TestGetMCPToolConfigExtended:
+    """Extended tests for get_mcp_tool_config with new tools."""
+
+    def test_new_tools_in_config(self) -> None:
+        """Test that new tools are included in config."""
+        config = get_mcp_tool_config()
+
+        assert "describe_dataframe" in config["tools"]
+        assert "describe_correlations" in config["tools"]
+        assert "compression_stats" in config["tools"]
+
+    def test_all_six_tools_present(self) -> None:
+        """Test that all six tools are in the config."""
+        config = get_mcp_tool_config()
+
+        expected_tools = [
+            "describe_data",
+            "describe_batch",
+            "describe_json",
+            "describe_dataframe",
+            "describe_correlations",
+            "compression_stats",
+        ]
+        for tool in expected_tools:
+            assert tool in config["tools"], f"Missing tool: {tool}"

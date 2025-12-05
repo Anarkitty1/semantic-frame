@@ -7,6 +7,10 @@ or Claude Code).
 Features:
 - describe_data: Analyze numerical data and return semantic descriptions
 - describe_batch: Batch analysis for multiple data series (token efficient)
+- describe_json: Structured JSON output for programmatic use
+- describe_dataframe: Multi-column analysis with correlation detection
+- describe_correlations: Cross-column relationship analysis
+- compression_stats: Token compression metrics
 - wrap_for_semantic_output: Decorator to add semantic compression to any tool
 
 Requires: pip install semantic-frame[mcp]
@@ -204,6 +208,215 @@ def describe_json(data: str, context: str = "Data") -> str:
         return json.dumps({"error": str(e)})
 
 
+@mcp.tool()  # type: ignore[misc]
+def describe_dataframe(
+    datasets: str,
+    context: str = "Data",
+    correlation_threshold: float = 0.5,
+) -> str:
+    """Analyze multiple columns with cross-column correlation detection.
+
+    Use this when you have related data columns (like sales + inventory,
+    CPU + memory, price + volume) and want to understand both individual
+    trends AND relationships between columns.
+
+    This is more powerful than describe_batch because it detects correlations
+    like "Sales UP while Inventory DOWN" or "CPU and Memory move together".
+
+    Args:
+        datasets: JSON object mapping column names to data arrays.
+                  Example: '{"sales": [100, 200, 300], "inventory": [500, 400, 300]}'
+        context: Context label for the entire dataset (e.g., "Retail Metrics").
+        correlation_threshold: Minimum |r| for reporting correlations (default 0.5).
+                              Only correlations with absolute value >= threshold shown.
+
+    Returns:
+        Combined analysis including:
+        - Per-column semantic descriptions
+        - Detected correlations between columns
+        - Summary narrative
+
+    Example:
+        Input: datasets='{"sales": [100, 200, 300, 400], "inventory": [400, 300, 200, 100]}'
+        Output: "Analyzed 2 columns. sales: rapidly rising... inventory: rapidly falling...
+                 Correlations: sales and inventory are strongly inverse (r=-1.00)"
+    """
+    import pandas as pd
+
+    from semantic_frame import describe_dataframe as df_analyze
+
+    try:
+        data_dict = json.loads(datasets)
+
+        # Convert to pandas DataFrame
+        df = pd.DataFrame(data_dict)
+
+        # Run full DataFrame analysis with correlations
+        result = df_analyze(df, context=context, correlation_threshold=correlation_threshold)
+
+        # Format output
+        output_parts: list[str] = []
+
+        # Summary
+        output_parts.append(result.summary_narrative)
+        output_parts.append("")
+
+        # Per-column narratives
+        output_parts.append("Column Details:")
+        for col_name, col_result in result.columns.items():
+            output_parts.append(f"  {col_name}: {col_result.narrative}")
+
+        # Correlations
+        if result.correlations:
+            output_parts.append("")
+            output_parts.append("Correlations:")
+            for corr in result.correlations:
+                output_parts.append(f"  {corr.narrative}")
+
+        return "\n".join(output_parts)
+
+    except json.JSONDecodeError as e:
+        return f"Error parsing datasets JSON: {str(e)}"
+    except Exception as e:
+        return f"Error analyzing dataframe: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_correlations(
+    datasets: str,
+    threshold: float = 0.5,
+    method: str = "pearson",
+) -> str:
+    """Analyze correlations between multiple data columns.
+
+    Use this when you specifically want to understand relationships between
+    variables, without the full per-column analysis. Faster and more focused
+    than describe_dataframe when you only need correlation insights.
+
+    Args:
+        datasets: JSON object mapping column names to data arrays.
+                  Example: '{"price": [10, 20, 30], "volume": [300, 200, 100]}'
+        threshold: Minimum |r| for reporting (default 0.5). Lower values
+                  show weaker correlations.
+        method: Correlation method - "pearson" (default, linear) or "spearman" (rank-based).
+                Use spearman for non-linear monotonic relationships.
+
+    Returns:
+        List of significant correlations with strength classifications:
+        - Strong positive (r > 0.7): Variables move together strongly
+        - Moderate positive (0.4 < r <= 0.7): Variables tend to move together
+        - Weak (-0.4 <= r <= 0.4): Little to no relationship
+        - Moderate negative (-0.7 <= r < -0.4): Variables tend to move opposite
+        - Strong negative (r < -0.7): Variables move opposite strongly
+
+    Example:
+        Input: datasets='{"price": [10, 20, 30], "demand": [100, 50, 25]}'
+        Output: "Found 1 significant correlation:
+                 price and demand are strongly inverse (r=-0.98)"
+    """
+    import numpy as np
+
+    from semantic_frame.core.correlations import (
+        calc_correlation_matrix,
+        identify_significant_correlations,
+    )
+    from semantic_frame.narrators.correlation import generate_correlation_narrative
+
+    try:
+        data_dict = json.loads(datasets)
+
+        # Convert to numpy arrays
+        values_dict: dict[str, np.ndarray] = {}
+        for name, values in data_dict.items():
+            if isinstance(values, str):
+                values = _parse_data_input(values)
+            values_dict[name] = np.array(values, dtype=float)
+
+        if len(values_dict) < 2:
+            return "Need at least 2 columns to calculate correlations."
+
+        # Calculate correlations
+        corr_matrix = calc_correlation_matrix(values_dict, method=method)
+        significant = identify_significant_correlations(corr_matrix, threshold=threshold)
+
+        if not significant:
+            return f"No significant correlations found (threshold: |r| >= {threshold})."
+
+        # Format output
+        output_parts: list[str] = [
+            f"Found {len(significant)} significant correlation(s):",
+            "",
+        ]
+
+        for col_a, col_b, r, state in significant:
+            narrative = generate_correlation_narrative(col_a, col_b, r, state)
+            output_parts.append(f"  {narrative}")
+
+        return "\n".join(output_parts)
+
+    except json.JSONDecodeError as e:
+        return f"Error parsing datasets JSON: {str(e)}"
+    except Exception as e:
+        return f"Error calculating correlations: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def compression_stats(data: str, context: str = "Data") -> str:
+    """Get token compression statistics for data analysis.
+
+    Use this to understand how much token savings you get from semantic
+    compression. Helpful for optimizing LLM context usage and understanding
+    the efficiency gains.
+
+    Args:
+        data: Numbers as JSON array, CSV, or newline-separated.
+        context: Label for the data.
+
+    Returns:
+        Compression statistics including:
+        - Original data points count
+        - Estimated tokens for raw data
+        - Tokens in semantic narrative
+        - Compression ratio (0.95 = 95% reduction)
+
+    Example:
+        Input: data="[1, 2, 3, ..., 1000]" (1000 numbers)
+        Output: "Compression Stats:
+                 Original: 1000 data points (~2000 tokens)
+                 Narrative: 45 tokens
+                 Compression ratio: 97.8%"
+    """
+    from semantic_frame import compression_stats as calc_stats
+    from semantic_frame import describe_series
+
+    try:
+        values = _parse_data_input(data)
+
+        # Get full result for compression calculation
+        result = describe_series(values, context=context, output="full")
+
+        # Calculate stats
+        stats = calc_stats(values, result)
+
+        # Format output
+        ratio_pct = stats["narrative_compression_ratio"] * 100
+        orig_tokens = stats["original_tokens_estimate"]
+        output = f"""Compression Stats for {context}:
+  Original: {stats['original_data_points']} data points (~{orig_tokens} tokens)
+  Narrative: {stats['narrative_tokens']} tokens
+  JSON output: {stats['json_tokens']} tokens
+  Narrative compression: {ratio_pct:.1f}%
+  JSON compression: {stats['json_compression_ratio'] * 100:.1f}%
+  Tokenizer: {stats['tokenizer']}
+
+Narrative: {result.narrative}"""
+
+        return output
+
+    except Exception as e:
+        return f"Error calculating compression stats: {str(e)}"
+
+
 # =============================================================================
 # MCP Wrapper Utility
 # =============================================================================
@@ -357,7 +570,14 @@ def get_mcp_tool_config(
             "Token-efficient semantic analysis for numerical data. "
             "Compresses 10,000+ data points into ~50 word descriptions."
         ),
-        "tools": ["describe_data", "describe_batch", "describe_json"],
+        "tools": [
+            "describe_data",
+            "describe_batch",
+            "describe_json",
+            "describe_dataframe",
+            "describe_correlations",
+            "compression_stats",
+        ],
     }
 
     if defer_loading:
