@@ -1,0 +1,81 @@
+{
+  "metadata": {
+    "generated": "2025-12-08T22:37:52.250445",
+    "model": "claude-sonnet-4-20250514",
+    "n_trials": 5
+  },
+  "summary": {
+    "accuracy_improvement": -0.006060606060606058,
+    "mean_compression": 0.9780788803086614,
+    "hallucination_reduction": 0.0393939393939394,
+    "cost_savings": 0.9633977645800287,
+    "table_rows": {
+      "Accuracy": {
+        "baseline": "5.5%",
+        "treatment": "4.8%",
+        "improvement": "-0.6%"
+      },
+      "Token Compression": {
+        "baseline": "0%",
+        "treatment": "97.8%",
+        "improvement": "97.8% \u2193"
+      },
+      "Hallucination Rate": {
+        "baseline": "21.5%",
+        "treatment": "17.6%",
+        "improvement": "+3.9% \u2193"
+      },
+      "API Cost": {
+        "baseline": "$6.5062",
+        "treatment": "$0.2381",
+        "improvement": "96.3% \u2193"
+      }
+    }
+  },
+  "aggregated_results": {
+    "statistical_baseline": {
+      "task_type": "statistical",
+      "condition": "baseline",
+      "n_trials": 330,
+      "mean_compression_ratio": 0.0,
+      "std_compression_ratio": 0.0,
+      "total_raw_tokens": 2107160,
+      "total_compressed_tokens": 2107160,
+      "accuracy": 0.05454545454545454,
+      "mean_numerical_proximity": 0.05454545454545454,
+      "std_numerical_proximity": 0.2270908363053963,
+      "hallucination_rate": 0.21515151515151515,
+      "precision": null,
+      "recall": null,
+      "f1_score": null,
+      "mean_cost_usd": 0.019715636363636362,
+      "total_cost_usd": 6.506159999999993,
+      "mean_latency_ms": 10.0,
+      "std_latency_ms": 0.0,
+      "accuracy_ci_lower": 0.0347774905027539,
+      "accuracy_ci_upper": 0.08456533555607158
+    },
+    "statistical_treatment": {
+      "task_type": "statistical",
+      "condition": "treatment",
+      "n_trials": 330,
+      "mean_compression_ratio": 0.9780788803086614,
+      "std_compression_ratio": 0.02328063583308815,
+      "total_raw_tokens": 2107160,
+      "total_compressed_tokens": 17160,
+      "accuracy": 0.048484848484848485,
+      "mean_numerical_proximity": 0.048484848484848485,
+      "std_numerical_proximity": 0.21478842602023457,
+      "hallucination_rate": 0.17575757575757575,
+      "precision": null,
+      "recall": null,
+      "f1_score": null,
+      "mean_cost_usd": 0.0007216363636363636,
+      "total_cost_usd": 0.23814000000000024,
+      "mean_latency_ms": 10.0,
+      "std_latency_ms": 0.0,
+      "accuracy_ci_lower": 0.03006123973160294,
+      "accuracy_ci_upper": 0.0772998560695195
+    }
+  }
+}

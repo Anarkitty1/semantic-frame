@@ -1,0 +1,3 @@
+task_type,condition,n_trials,accuracy,accuracy_ci_lower,accuracy_ci_upper,mean_compression_ratio,hallucination_rate,mean_cost_usd,mean_latency_ms
+statistical,baseline,330,0.0545,0.0348,0.0846,0.0000,0.2152,0.019716,10.00
+statistical,treatment,330,0.0485,0.0301,0.0773,0.9781,0.1758,0.000722,10.00

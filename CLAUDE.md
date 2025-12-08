@@ -138,6 +138,27 @@ Tests are organized to mirror the module structure:
 - `test_langchain_integration.py` - LangChain tool wrapper tests
 - `test_crewai_integration.py` - CrewAI tool wrapper tests
 - `test_mcp_integration.py` - MCP server integration tests
+- `test_benchmarks.py` - Benchmark pipeline integration tests
+- `test_benchmark_config.py` - Configuration validation tests
+- `test_benchmark_runner.py` - Runner orchestration tests
+- `test_benchmark_datasets.py` - Data generation tests
+- `test_benchmark_metrics.py` - Metric calculation tests
+- `test_benchmark_reporter.py` - Report generation tests
+- `test_benchmark_claude_client.py` - API client tests
+- `test_benchmark_tasks.py` - Task implementation tests
+
+### Test Markers
+
+```bash
+# Run only benchmark tests
+uv run pytest -m benchmark
+
+# Exclude slow tests (default behavior)
+uv run pytest
+
+# Include slow tests (1M+ data points)
+uv run pytest -m slow
+```
 
 When adding new analysis features:
 1. Add enum to `core/enums.py` with threshold docstring
@@ -145,6 +166,67 @@ When adding new analysis features:
 3. Integrate in `core/translator.py`
 4. Update narrative in `narrators/time_series.py`
 5. Add tests for each layer
+
+## Benchmark Framework
+
+The `benchmarks/` directory contains a framework for evaluating semantic-frame's effectiveness with LLMs.
+
+### Running Benchmarks
+
+```bash
+# Full benchmark suite (requires ANTHROPIC_API_KEY)
+python -m benchmarks.run_benchmark
+
+# Run specific task
+python -m benchmarks.run_benchmark --task statistical
+
+# Quick validation (fewer trials)
+python -m benchmarks.run_benchmark --quick
+
+# Mock mode (no API calls, for testing pipeline)
+python -m benchmarks.run_benchmark --mock
+
+# Output formats
+python -m benchmarks.run_benchmark --format json  # or csv, markdown, all
+```
+
+### Benchmark Architecture
+
+```
+benchmarks/
+├── run_benchmark.py    # CLI entry point
+├── config.py           # Configuration (TaskType, DataPattern, thresholds)
+├── runner.py           # Orchestrates benchmark execution
+├── claude_client.py    # Anthropic API wrapper
+├── datasets.py         # Synthetic data generation
+├── metrics.py          # Accuracy, F1, hallucination detection
+├── reporter.py         # JSON/CSV/Markdown report generation
+└── tasks/              # Task implementations
+    ├── base.py         # BaseBenchmarkTask abstract class
+    ├── statistical.py  # T1: Single-value extraction (mean, median, etc.)
+    ├── trend.py        # T2: Trend classification
+    ├── anomaly.py      # T3: Anomaly detection
+    ├── comparative.py  # T4: Multi-series comparison
+    ├── multi_step.py   # T5: Multi-step reasoning chains
+    └── scaling.py      # T6: Large dataset handling
+```
+
+### Task Types
+
+| Task | Code | Description |
+|------|------|-------------|
+| Statistical | T1 | Extract mean, median, std, percentiles |
+| Trend | T2 | Classify trend direction/strength |
+| Anomaly | T3 | Detect anomaly count/locations |
+| Comparative | T4 | Compare multiple series |
+| Multi-step | T5 | Chained reasoning tasks |
+| Scaling | T6 | Handle 10K-100K data points |
+
+### Key Thresholds (from `config.py`)
+
+- Token compression: 90% minimum, 95% target
+- Hallucination rate: <2% maximum
+- Accuracy targets vary by task (see `MetricThresholds`)
 
 ## Framework Integrations
 
