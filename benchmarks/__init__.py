@@ -18,8 +18,16 @@ See benchmarks/README.md for full documentation.
 """
 
 from benchmarks.config import BenchmarkConfig
-from benchmarks.reporter import BenchmarkReporter
+from benchmarks.logging_config import get_logger, setup_logging
+from benchmarks.reporter import BenchmarkReporter, compare_benchmark_results
 from benchmarks.runner import BenchmarkRunner
 
-__all__ = ["BenchmarkConfig", "BenchmarkRunner", "BenchmarkReporter"]
+__all__ = [
+    "BenchmarkConfig",
+    "BenchmarkRunner",
+    "BenchmarkReporter",
+    "compare_benchmark_results",
+    "setup_logging",
+    "get_logger",
+]
 __version__ = "0.1.0"

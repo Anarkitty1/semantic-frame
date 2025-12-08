@@ -283,3 +283,196 @@ class BenchmarkReporter:
             print(row)
 
         print("=" * 70)
+
+    def generate_ascii_chart(self, metric: str = "accuracy") -> str:
+        """Generate ASCII bar chart for visual comparison.
+
+        Args:
+            metric: Metric to visualize (accuracy, compression_ratio, hallucination_rate)
+
+        Returns:
+            ASCII chart string
+        """
+        lines = []
+        lines.append(f"\n{'='*60}")
+        lines.append(f"  {metric.upper()} BY TASK")
+        lines.append(f"{'='*60}")
+
+        task_types = sorted(set(k.split("_")[0] for k in self.aggregated.keys()))
+        max_bar_width = 40
+
+        for task_type in task_types:
+            baseline_key = f"{task_type}_baseline"
+            treatment_key = f"{task_type}_treatment"
+
+            baseline = self.aggregated.get(baseline_key)
+            treatment = self.aggregated.get(treatment_key)
+
+            if not baseline or not treatment:
+                continue
+
+            # Get metric values
+            if metric == "accuracy":
+                baseline_val = baseline.accuracy
+                treatment_val = treatment.accuracy
+            elif metric == "compression_ratio":
+                baseline_val = 0.0  # Baseline has no compression
+                treatment_val = treatment.mean_compression_ratio
+            elif metric == "hallucination_rate":
+                baseline_val = baseline.hallucination_rate
+                treatment_val = treatment.hallucination_rate
+            else:
+                continue
+
+            # Create bars
+            baseline_bar = "█" * int(baseline_val * max_bar_width)
+            treatment_bar = "█" * int(treatment_val * max_bar_width)
+
+            lines.append(f"\n{task_type.upper()}")
+            lines.append(f"  Baseline:  |{baseline_bar:<{max_bar_width}}| {baseline_val:.1%}")
+            lines.append(f"  Treatment: |{treatment_bar:<{max_bar_width}}| {treatment_val:.1%}")
+
+        lines.append(f"{'='*60}\n")
+        return "\n".join(lines)
+
+
+def compare_benchmark_results(
+    result_files: list[Path],
+    output_format: str = "table",
+) -> str:
+    """Compare results from multiple benchmark runs.
+
+    Args:
+        result_files: List of JSON result file paths
+        output_format: Output format ("table", "csv", "json")
+
+    Returns:
+        Comparison output as string
+
+    Example:
+        >>> from pathlib import Path
+        >>> files = [Path("run1.json"), Path("run2.json")]
+        >>> print(compare_benchmark_results(files))
+    """
+    results = []
+    for path in result_files:
+        if not path.exists():
+            raise FileNotFoundError(f"Result file not found: {path}")
+        with open(path) as f:
+            results.append((path.stem, json.load(f)))
+
+    if not results:
+        return "No results to compare"
+
+    if output_format == "table":
+        return _format_comparison_table(results)
+    elif output_format == "csv":
+        return _format_comparison_csv(results)
+    elif output_format == "json":
+        return json.dumps(_build_comparison_data(results), indent=2)
+    else:
+        raise ValueError(f"Unknown output format: {output_format}")
+
+
+def _format_comparison_table(results: list[tuple[str, dict[str, Any]]]) -> str:
+    """Format comparison as ASCII table."""
+    lines: list[str] = []
+    lines.append("\n" + "=" * 80)
+    lines.append("BENCHMARK COMPARISON")
+    lines.append("=" * 80)
+
+    # Header
+    run_names = [name[:15] for name, _ in results]
+    header = f"{'Metric':<30}"
+    for name in run_names:
+        header += f" {name:<15}"
+    lines.append(header)
+    lines.append("-" * 80)
+
+    # Extract metrics for each run
+    metric_configs = [
+        ("Overall Accuracy", "accuracy"),
+        ("Token Compression", "mean_compression_ratio"),
+        ("Hallucination Rate", "hallucination_rate"),
+    ]
+
+    for metric_name, metric_key in metric_configs:
+        row = f"{metric_name:<30}"
+        for _, data in results:
+            value = _get_weighted_metric(data, metric_key, "treatment")
+            row += f" {value:.1%}" if value is not None else " N/A"
+            row = row.ljust(len(row) + (15 - len(f"{value:.1%}" if value else "N/A")))
+        lines.append(row)
+
+    lines.append("=" * 80)
+    return "\n".join(lines)
+
+
+def _format_comparison_csv(results: list[tuple[str, dict[str, Any]]]) -> str:
+    """Format comparison as CSV."""
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header
+    header = ["metric"]
+    for name, _ in results:
+        header.append(name)
+    writer.writerow(header)
+
+    # Rows
+    metric_configs = [
+        ("accuracy", "accuracy"),
+        ("compression_ratio", "mean_compression_ratio"),
+        ("hallucination_rate", "hallucination_rate"),
+    ]
+
+    for metric_name, metric_key in metric_configs:
+        row: list[str] = [metric_name]
+        for _, data in results:
+            value = _get_weighted_metric(data, metric_key, "treatment")
+            row.append(f"{value:.4f}" if value is not None else "")
+        writer.writerow(row)
+
+    return output.getvalue()
+
+
+def _build_comparison_data(results: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    """Build comparison data structure."""
+    return {
+        "runs": [
+            {
+                "name": name,
+                "accuracy": _get_weighted_metric(data, "accuracy", "treatment"),
+                "compression_ratio": _get_weighted_metric(
+                    data, "mean_compression_ratio", "treatment"
+                ),
+                "hallucination_rate": _get_weighted_metric(data, "hallucination_rate", "treatment"),
+                "metadata": data.get("metadata", {}),
+            }
+            for name, data in results
+        ]
+    }
+
+
+def _get_weighted_metric(data: dict[str, Any], metric: str, condition: str) -> float | None:
+    """Extract weighted metric from benchmark data."""
+    aggregated = data.get("aggregated_results", {})
+    if not aggregated:
+        return None
+
+    filtered: list[dict[str, Any]] = [
+        v for k, v in aggregated.items() if condition in k and isinstance(v, dict)
+    ]
+
+    if not filtered:
+        return None
+
+    total_trials = sum(int(r.get("n_trials", 0)) for r in filtered)
+    if total_trials == 0:
+        return None
+
+    weighted_sum = sum(float(r.get(metric, 0)) * int(r.get("n_trials", 0)) for r in filtered)
+    return float(weighted_sum / total_trials)

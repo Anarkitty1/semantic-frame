@@ -4,39 +4,84 @@ Benchmark Metrics
 All evaluation metrics for measuring token reduction and accuracy gains.
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
+if TYPE_CHECKING:
+    pass
+
+# Type alias for condition values
+Condition = Literal["baseline", "treatment"]
+
 # Token counting - use tiktoken if available, fallback to approximation
+# Note: cl100k_base is the encoding used by GPT-4 and similar models.
+# While Anthropic has not published exact tokenizer details, cl100k_base
+# provides a reasonable approximation for token counting purposes.
+# Source: https://github.com/openai/tiktoken
 try:
     import tiktoken
 
     _encoding = tiktoken.get_encoding("cl100k_base")
 
     def count_tokens(text: str) -> int:
-        """Count tokens using tiktoken (Claude-compatible)."""
+        """Count tokens using tiktoken cl100k_base encoding.
+
+        This uses OpenAI's tiktoken library with cl100k_base encoding,
+        which provides a reasonable approximation for Claude models.
+        While exact token counts may differ from Claude's internal tokenizer,
+        this is sufficient for benchmark comparisons and cost estimation.
+
+        Args:
+            text: The text to tokenize.
+
+        Returns:
+            Number of tokens in the text.
+
+        References:
+            - tiktoken: https://github.com/openai/tiktoken
+            - cl100k_base: Encoding used by GPT-4, text-embedding-ada-002
+        """
         return len(_encoding.encode(text))
 except ImportError:
 
     def count_tokens(text: str) -> int:
-        """Approximate token count (fallback when tiktoken not available)."""
+        """Approximate token count (fallback when tiktoken not available).
+
+        Uses a simple heuristic of ~4 characters per token, which is
+        a reasonable approximation for English text with modern tokenizers.
+
+        Args:
+            text: The text to tokenize.
+
+        Returns:
+            Approximate number of tokens in the text.
+
+        Note:
+            For accurate token counting, install tiktoken:
+            pip install tiktoken
+        """
         # Rough approximation: ~4 characters per token for English
         return len(text) // 4
 
 
-@dataclass
+@dataclass(frozen=True)
 class TokenMetrics:
-    """Token efficiency metrics."""
+    """Token efficiency metrics.
+
+    This dataclass is frozen (immutable) for thread safety and hashability.
+    """
 
     raw_tokens: int
     compressed_tokens: int
     compression_ratio: float
 
     @classmethod
-    def compute(cls, raw_data: str, compressed_output: str) -> "TokenMetrics":
+    def compute(cls, raw_data: str, compressed_output: str) -> TokenMetrics:
         """Compute token metrics from raw data and compressed output."""
         raw_tokens = count_tokens(raw_data)
         compressed_tokens = count_tokens(compressed_output)
@@ -92,7 +137,16 @@ class AccuracyMetrics:
 
 @dataclass
 class ClassificationMetrics:
-    """Metrics for classification tasks (trend, anomaly type, etc.)."""
+    """Metrics for classification tasks (trend, anomaly type, etc.).
+
+    Standard binary classification metrics based on the confusion matrix.
+
+    References:
+        - Precision, Recall, F1: Powers, D.M.W. (2011). "Evaluation: From Precision,
+          Recall and F-measure to ROC, Informedness, Markedness and Correlation."
+          Journal of Machine Learning Technologies. ISSN: 2229-3981
+        - https://en.wikipedia.org/wiki/Precision_and_recall
+    """
 
     true_positives: int = 0
     false_positives: int = 0
@@ -101,25 +155,37 @@ class ClassificationMetrics:
 
     @property
     def precision(self) -> float:
-        """Calculate precision."""
+        """Calculate precision (positive predictive value).
+
+        Precision = TP / (TP + FP)
+        """
         denom = self.true_positives + self.false_positives
         return self.true_positives / denom if denom > 0 else 0.0
 
     @property
     def recall(self) -> float:
-        """Calculate recall."""
+        """Calculate recall (sensitivity, true positive rate).
+
+        Recall = TP / (TP + FN)
+        """
         denom = self.true_positives + self.false_negatives
         return self.true_positives / denom if denom > 0 else 0.0
 
     @property
     def f1_score(self) -> float:
-        """Calculate F1 score."""
+        """Calculate F1 score (harmonic mean of precision and recall).
+
+        F1 = 2 * (precision * recall) / (precision + recall)
+        """
         p, r = self.precision, self.recall
         return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
 
     @property
     def accuracy(self) -> float:
-        """Calculate accuracy."""
+        """Calculate accuracy (proportion of correct predictions).
+
+        Accuracy = (TP + TN) / (TP + FP + TN + FN)
+        """
         total = (
             self.true_positives + self.false_positives + self.true_negatives + self.false_negatives
         )
@@ -129,13 +195,23 @@ class ClassificationMetrics:
 
 @dataclass
 class AnomalyDetectionMetrics:
-    """Specialized metrics for anomaly detection tasks."""
+    """Specialized metrics for anomaly detection tasks.
+
+    Includes point-wise metrics (exact position matching) and affinity metrics
+    (segment-aware with delay tolerance) for practical anomaly detection evaluation.
+
+    References:
+        - Affinity metrics: Tatbul et al. (2018). "Precision and Recall for
+          Time Series." NeurIPS 2018. https://arxiv.org/abs/1803.03639
+        - Delayed detection: Lavin & Ahmad (2015). "Evaluating Real-Time Anomaly
+          Detection Algorithms." https://arxiv.org/abs/1510.03336
+    """
 
     point_wise_precision: float = 0.0
     point_wise_recall: float = 0.0
     point_wise_f1: float = 0.0
 
-    # Affinity metrics (segment-aware)
+    # Affinity metrics (segment-aware) - from Tatbul et al. 2018
     affinity_precision: float = 0.0
     affinity_recall: float = 0.0
     affinity_f1: float = 0.0
@@ -150,7 +226,7 @@ class AnomalyDetectionMetrics:
         actual_indices: set[int],
         series_length: int,
         delay_tolerance: int = 3,
-    ) -> "AnomalyDetectionMetrics":
+    ) -> AnomalyDetectionMetrics:
         """Compute all anomaly detection metrics."""
         # Point-wise metrics
         tp = len(predicted_indices & actual_indices)
@@ -200,9 +276,12 @@ class AnomalyDetectionMetrics:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class CostMetrics:
-    """API cost metrics."""
+    """API cost metrics.
+
+    This dataclass is frozen (immutable) for thread safety and hashability.
+    """
 
     input_tokens: int
     output_tokens: int
@@ -214,7 +293,7 @@ class CostMetrics:
     OUTPUT_COST_PER_1K: float = 0.015  # Sonnet output
 
     @classmethod
-    def compute(cls, input_tokens: int, output_tokens: int) -> "CostMetrics":
+    def compute(cls, input_tokens: int, output_tokens: int) -> CostMetrics:
         """Compute cost metrics."""
         total = input_tokens + output_tokens
         cost = (input_tokens / 1000 * cls.INPUT_COST_PER_1K) + (
@@ -232,8 +311,8 @@ class CostMetrics:
 class TrialResult:
     """Results from a single benchmark trial."""
 
-    task_type: str
-    condition: str  # "baseline" or "treatment"
+    task_type: str  # TaskType.value string for serialization compatibility
+    condition: Condition  # "baseline" or "treatment"
     query: str
 
     # Token metrics
@@ -261,8 +340,8 @@ class TrialResult:
 class AggregatedResults:
     """Aggregated results across multiple trials."""
 
-    task_type: str
-    condition: str
+    task_type: str  # TaskType.value string for serialization compatibility
+    condition: Condition
     n_trials: int
 
     # Token metrics (aggregated)
@@ -295,7 +374,7 @@ class AggregatedResults:
     accuracy_ci_upper: float = 0.0
 
     @classmethod
-    def from_trials(cls, trials: list[TrialResult]) -> "AggregatedResults":
+    def from_trials(cls, trials: list[TrialResult]) -> AggregatedResults:
         """Aggregate results from multiple trials."""
         if not trials:
             raise ValueError("Cannot aggregate empty trial list")

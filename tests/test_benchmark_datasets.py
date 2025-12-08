@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from benchmarks.config import AnomalyType, DataPattern
 from benchmarks.datasets import (
@@ -562,3 +563,75 @@ class TestSaveLoadDataset:
         assert data["name"] == "test"
         assert data["pattern"] == "random"
         assert data["seed"] == 42
+
+
+class TestInputValidation:
+    """Tests for input validation in dataset generators."""
+
+    def test_generate_random_invalid_n(self) -> None:
+        """Test generate_random rejects n <= 0."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="n must be > 0"):
+            gen.generate_random(0)
+        with pytest.raises(ValueError, match="n must be > 0"):
+            gen.generate_random(-5)
+
+    def test_generate_random_invalid_range(self) -> None:
+        """Test generate_random rejects low >= high."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="low must be < high"):
+            gen.generate_random(100, low=50.0, high=50.0)
+        with pytest.raises(ValueError, match="low must be < high"):
+            gen.generate_random(100, low=100.0, high=50.0)
+
+    def test_generate_linear_trend_invalid_n(self) -> None:
+        """Test generate_linear_trend rejects n <= 0."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="n must be > 0"):
+            gen.generate_linear_trend(0)
+
+    def test_generate_exponential_trend_invalid_n(self) -> None:
+        """Test generate_exponential_trend rejects n <= 0."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="n must be > 0"):
+            gen.generate_exponential_trend(0)
+
+    def test_generate_seasonal_invalid_n(self) -> None:
+        """Test generate_seasonal rejects n <= 0."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="n must be > 0"):
+            gen.generate_seasonal(0)
+
+    def test_generate_seasonal_invalid_period(self) -> None:
+        """Test generate_seasonal rejects period <= 0."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="period must be > 0"):
+            gen.generate_seasonal(100, period=0)
+        with pytest.raises(ValueError, match="period must be > 0"):
+            gen.generate_seasonal(100, period=-10)
+
+    def test_generate_random_walk_invalid_n(self) -> None:
+        """Test generate_random_walk rejects n <= 0."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="n must be > 0"):
+            gen.generate_random_walk(0)
+
+    def test_generate_correlated_series_invalid_n(self) -> None:
+        """Test generate_correlated_series rejects n <= 0."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="n must be > 0"):
+            gen.generate_correlated_series(0)
+
+    def test_generate_correlated_series_invalid_n_series(self) -> None:
+        """Test generate_correlated_series rejects n_series <= 0."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="n_series must be > 0"):
+            gen.generate_correlated_series(100, n_series=0)
+
+    def test_generate_correlated_series_invalid_correlation(self) -> None:
+        """Test generate_correlated_series rejects correlation outside [0, 1]."""
+        gen = DatasetGenerator(seed=42)
+        with pytest.raises(ValueError, match="correlation_strength must be in"):
+            gen.generate_correlated_series(100, correlation_strength=1.5)
+        with pytest.raises(ValueError, match="correlation_strength must be in"):
+            gen.generate_correlated_series(100, correlation_strength=-0.1)

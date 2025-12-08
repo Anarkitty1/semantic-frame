@@ -12,6 +12,7 @@ from benchmarks.claude_client import ClaudeClient, ClaudeResponse
 from benchmarks.config import BenchmarkConfig, TaskType
 from benchmarks.datasets import SyntheticDataset
 from benchmarks.metrics import (
+    Condition,
     CostMetrics,
     TokenMetrics,
     TrialResult,
@@ -147,7 +148,7 @@ class BaseTask(ABC):
     def convert_to_trial_result(
         self,
         task_result: TaskResult,
-        condition: str,
+        condition: Condition,
     ) -> TrialResult:
         """Convert TaskResult to TrialResult for aggregation."""
         if condition == "baseline":

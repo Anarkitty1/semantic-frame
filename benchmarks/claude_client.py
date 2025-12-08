@@ -16,6 +16,35 @@ from benchmarks.metrics import count_tokens, parse_llm_response
 if TYPE_CHECKING:
     from anthropic import Anthropic
 
+# Try to import specific Anthropic exceptions for better error handling
+try:
+    from anthropic import (
+        APIConnectionError,
+        APIError,
+        APIStatusError,
+        APITimeoutError,
+        AuthenticationError,
+        RateLimitError,
+    )
+
+    _ANTHROPIC_ERRORS: tuple[type[Exception], ...] = (
+        APIError,
+        APIConnectionError,
+        APIStatusError,
+        APITimeoutError,
+        AuthenticationError,
+        RateLimitError,
+    )
+    _RETRYABLE_ERRORS: tuple[type[Exception], ...] = (
+        APIConnectionError,
+        APITimeoutError,
+        RateLimitError,
+    )
+except ImportError:
+    # If anthropic not installed, use generic exceptions
+    _ANTHROPIC_ERRORS = (Exception,)
+    _RETRYABLE_ERRORS = (Exception,)
+
 
 @dataclass
 class ClaudeResponse:
@@ -97,12 +126,38 @@ class ClaudeClient:
                     parsed=parse_llm_response(content),
                 )
 
-            except Exception as e:
+            except _RETRYABLE_ERRORS as e:
+                # Transient errors - retry with exponential backoff
                 last_error = str(e)
+                error_type = type(e).__name__
                 if attempt < self.config.retry_attempts - 1:
-                    # Log retry attempt
                     retries = self.config.retry_attempts
-                    print(f"  API call failed (attempt {attempt + 1}/{retries}): {e}")
+                    delay = self.config.retry_delay * (2**attempt)  # Exponential backoff
+                    print(f"  {error_type} (attempt {attempt + 1}/{retries}): {e}")
+                    print(f"    Retrying in {delay:.1f}s...")
+                    time.sleep(delay)
+                continue
+            except _ANTHROPIC_ERRORS as e:
+                # Non-retryable API errors - fail immediately
+                error_type = type(e).__name__
+                error_msg = f"{error_type}: {e}"
+                print(f"ERROR: Non-retryable API error: {error_msg}", flush=True)
+                return ClaudeResponse(
+                    content="",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=0,
+                    model=self.config.model.model,
+                    parsed={},
+                    error=error_msg,
+                )
+            except Exception as e:
+                # Unexpected errors - log and fail
+                last_error = str(e)
+                error_type = type(e).__name__
+                if attempt < self.config.retry_attempts - 1:
+                    retries = self.config.retry_attempts
+                    print(f"  Unexpected {error_type} (attempt {attempt + 1}/{retries}): {e}")
                     time.sleep(self.config.retry_delay * (attempt + 1))
                 continue
 

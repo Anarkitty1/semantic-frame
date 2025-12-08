@@ -12,6 +12,7 @@ from pathlib import Path
 
 from benchmarks.claude_client import get_client
 from benchmarks.config import BenchmarkConfig, TaskType
+from benchmarks.logging_config import get_logger
 from benchmarks.metrics import AggregatedResults, TrialResult
 from benchmarks.tasks import (
     AnomalyTask,
@@ -21,6 +22,9 @@ from benchmarks.tasks import (
     StatisticalTask,
     TrendTask,
 )
+
+# Module logger
+_log = get_logger("runner")
 
 TASK_CLASSES = {
     TaskType.STATISTICAL: StatisticalTask,
@@ -177,8 +181,17 @@ class BenchmarkRunner:
             ],
         }
 
-        with open(output_path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+        try:
+            with open(output_path, "w") as f:
+                json.dump(data, f, indent=2, default=str)
+        except OSError as e:
+            error_type = type(e).__name__
+            print(f"ERROR: Failed to save results to {output_path}: {error_type}: {e}")
+            raise
+        except (TypeError, ValueError) as e:
+            error_type = type(e).__name__
+            print(f"ERROR: Failed to serialize results: {error_type}: {e}")
+            raise
 
         if self.config.verbose:
             print(f"\nResults saved to: {output_path}")

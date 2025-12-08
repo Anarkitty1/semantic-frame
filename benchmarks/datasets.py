@@ -69,6 +69,10 @@ class DatasetGenerator:
         name: str = "random",
     ) -> SyntheticDataset:
         """Generate uniform random data."""
+        if n <= 0:
+            raise ValueError(f"n must be > 0, got {n}")
+        if low >= high:
+            raise ValueError(f"low must be < high, got low={low}, high={high}")
         data = self.rng.uniform(low, high, n)
         ground_truth = {
             "mean": np.mean(data),
@@ -96,6 +100,8 @@ class DatasetGenerator:
         name: str = "linear_trend",
     ) -> SyntheticDataset:
         """Generate data with linear trend."""
+        if n <= 0:
+            raise ValueError(f"n must be > 0, got {n}")
         x = np.arange(n, dtype=np.float64)
         noise = self.rng.normal(0, noise_std, n)
         data = slope * x + intercept + noise
@@ -133,6 +139,8 @@ class DatasetGenerator:
         name: str = "exponential_trend",
     ) -> SyntheticDataset:
         """Generate data with exponential trend."""
+        if n <= 0:
+            raise ValueError(f"n must be > 0, got {n}")
         x = np.arange(n, dtype=np.float64)
         base = initial_value * np.exp(growth_rate * x)
         noise = self.rng.normal(0, noise_std, n)
@@ -168,6 +176,10 @@ class DatasetGenerator:
         name: str = "seasonal",
     ) -> SyntheticDataset:
         """Generate data with seasonal pattern."""
+        if n <= 0:
+            raise ValueError(f"n must be > 0, got {n}")
+        if period <= 0:
+            raise ValueError(f"period must be > 0, got {period}")
         x = np.arange(n, dtype=np.float64)
         seasonal = amplitude * np.sin(2 * np.pi * x / period)
         noise = self.rng.normal(0, noise_std, n)
@@ -200,6 +212,8 @@ class DatasetGenerator:
         name: str = "random_walk",
     ) -> SyntheticDataset:
         """Generate random walk data."""
+        if n <= 0:
+            raise ValueError(f"n must be > 0, got {n}")
         steps = self.rng.normal(0, step_std, n)
         data = np.cumsum(steps) + start
 
@@ -306,6 +320,14 @@ class DatasetGenerator:
         name: str = "correlated_series",
     ) -> dict[str, SyntheticDataset]:
         """Generate multiple correlated time series."""
+        if n <= 0:
+            raise ValueError(f"n must be > 0, got {n}")
+        if n_series <= 0:
+            raise ValueError(f"n_series must be > 0, got {n_series}")
+        if not 0.0 <= correlation_strength <= 1.0:
+            raise ValueError(
+                f"correlation_strength must be in [0.0, 1.0], got {correlation_strength}"
+            )
         # Generate base series
         base = self.rng.normal(50, 10, n)
 
@@ -501,7 +523,12 @@ class DatasetGenerator:
 
 
 def save_dataset(dataset: SyntheticDataset, path: Path) -> None:
-    """Save dataset to file."""
+    """Save dataset to file.
+
+    Raises:
+        OSError: If file cannot be written
+        TypeError/ValueError: If data cannot be serialized to JSON
+    """
     data = {
         "name": dataset.name,
         "data": dataset.data.tolist(),
@@ -514,30 +541,59 @@ def save_dataset(dataset: SyntheticDataset, path: Path) -> None:
         data["anomaly_indices"] = dataset.anomaly_indices
         data["anomaly_types"] = [t.value for t in dataset.anomaly_types]
 
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    except OSError as e:
+        raise OSError(f"Failed to save dataset to {path}: {e}") from e
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Failed to serialize dataset '{dataset.name}': {e}") from e
 
 
 def load_dataset(path: Path) -> SyntheticDataset:
-    """Load dataset from file."""
-    with open(path) as f:
-        data = json.load(f)
+    """Load dataset from file.
 
-    if "anomaly_indices" in data:
-        return AnomalyDataset(
+    Raises:
+        FileNotFoundError: If file does not exist
+        OSError: If file cannot be read
+        ValueError: If file contains invalid JSON or missing required fields
+        KeyError: If required fields are missing
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Dataset file not found: {path}")
+
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except OSError as e:
+        raise OSError(f"Failed to read dataset from {path}: {e}") from e
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in dataset file {path}: {e}") from e
+
+    # Validate required fields
+    required_fields = {"name", "data", "ground_truth", "pattern", "seed"}
+    missing = required_fields - set(data.keys())
+    if missing:
+        raise KeyError(f"Dataset file {path} missing required fields: {missing}")
+
+    try:
+        if "anomaly_indices" in data:
+            return AnomalyDataset(
+                name=data["name"],
+                data=np.array(data["data"]),
+                ground_truth=data["ground_truth"],
+                pattern=DataPattern(data["pattern"]),
+                seed=data["seed"],
+                anomaly_indices=data["anomaly_indices"],
+                anomaly_types=[AnomalyType(t) for t in data.get("anomaly_types", [])],
+            )
+
+        return SyntheticDataset(
             name=data["name"],
             data=np.array(data["data"]),
             ground_truth=data["ground_truth"],
             pattern=DataPattern(data["pattern"]),
             seed=data["seed"],
-            anomaly_indices=data["anomaly_indices"],
-            anomaly_types=[AnomalyType(t) for t in data.get("anomaly_types", [])],
         )
-
-    return SyntheticDataset(
-        name=data["name"],
-        data=np.array(data["data"]),
-        ground_truth=data["ground_truth"],
-        pattern=DataPattern(data["pattern"]),
-        seed=data["seed"],
-    )
+    except (ValueError, KeyError) as e:
+        raise ValueError(f"Invalid data in dataset file {path}: {e}") from e
