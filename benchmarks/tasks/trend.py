@@ -10,6 +10,9 @@ from benchmarks.config import TREND_QUERIES, TaskType
 from benchmarks.datasets import DatasetGenerator, SyntheticDataset
 from benchmarks.tasks.base import BaseTask
 
+# Type alias for ground truth values (float, str, int, bool, or list)
+GroundTruthValue = float | str | int | bool | list[int] | None
+
 
 class TrendTask(BaseTask):
     """
@@ -114,6 +117,7 @@ class TrendTask(BaseTask):
 
         return False, 0.0
 
-    def get_ground_truth(self, dataset: SyntheticDataset, query_name: str) -> Any:
+    def get_ground_truth(self, dataset: SyntheticDataset, query_name: str) -> GroundTruthValue:
         """Get ground truth for a specific query."""
-        return dataset.ground_truth.get(query_name)
+        value: GroundTruthValue = dataset.ground_truth.get(query_name)
+        return value

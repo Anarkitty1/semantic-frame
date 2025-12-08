@@ -41,9 +41,9 @@ try:
         RateLimitError,
     )
 except ImportError:
-    # If anthropic not installed, use generic exceptions
-    _ANTHROPIC_ERRORS = (Exception,)
-    _RETRYABLE_ERRORS = (Exception,)
+    # If anthropic not installed, only catch network errors (not programming bugs)
+    _ANTHROPIC_ERRORS = (ConnectionError, TimeoutError, OSError)
+    _RETRYABLE_ERRORS = (ConnectionError, TimeoutError)
 
 
 @dataclass
@@ -151,15 +151,7 @@ class ClaudeClient:
                     parsed={},
                     error=error_msg,
                 )
-            except Exception as e:
-                # Unexpected errors - log and fail
-                last_error = str(e)
-                error_type = type(e).__name__
-                if attempt < self.config.retry_attempts - 1:
-                    retries = self.config.retry_attempts
-                    print(f"  Unexpected {error_type} (attempt {attempt + 1}/{retries}): {e}")
-                    time.sleep(self.config.retry_delay * (attempt + 1))
-                continue
+            # Let programming errors (TypeError, AttributeError, etc.) propagate immediately
 
         # All retries failed - log error prominently
         error_msg = f"API call failed after {self.config.retry_attempts} attempts: {last_error}"

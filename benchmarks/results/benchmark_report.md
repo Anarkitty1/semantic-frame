@@ -1,60 +1,32 @@
 # Semantic Frame Benchmark Results
 
-Generated: 2025-12-08 17:40:25
+Generated: 2025-12-08 22:37:52
 Model: claude-sonnet-4-20250514
 
 ## Executive Summary
 
-- **Overall Accuracy Improvement**: 0.0%
-- **Mean Token Compression**: 97.0%
-- **Hallucination Reduction**: 0.0%
-- **Estimated Cost Savings**: 95.1%
+- **Overall Accuracy Improvement**: -0.6%
+- **Mean Token Compression**: 97.8%
+- **Hallucination Reduction**: 3.9%
+- **Estimated Cost Savings**: 96.3%
 
 ## Primary Results
 
 | Metric | Baseline (95% CI) | Treatment (95% CI) | Improvement |
 |--------|-------------------|--------------------| ------------|
-| Accuracy | 4.5% | 4.5% | +0.0% |
-| Token Compression | 0% | 97.0% | 97.0% ↓ |
-| Hallucination Rate | 85.7% | 85.7% | +0.0% ↓ |
-| API Cost | $3.2940 | $0.1605 | 95.1% ↓ |
+| Accuracy | 5.5% | 4.8% | -0.6% |
+| Token Compression | 0% | 97.8% | 97.8% ↓ |
+| Hallucination Rate | 21.5% | 17.6% | +3.9% ↓ |
+| API Cost | $6.5062 | $0.2381 | 96.3% ↓ |
 
 ## Results by Task
 
-### Anomaly
-
-- **Accuracy**: 0.0% → 3.3% (+3.3%)
-- **Token Compression**: 97.2%
-- **Hallucination Rate**: 100.0% → 100.0%
-- **Trials**: 30
-
-### Comparative
-
-- **Accuracy**: 25.0% → 25.0% (+0.0%)
-- **Token Compression**: 89.4%
-- **Hallucination Rate**: 25.0% → 25.0%
-- **Trials**: 8
-
-### Scaling
-
-- **Accuracy**: 0.0% → 4.2% (+4.2%)
-- **Token Compression**: 95.9%
-- **Hallucination Rate**: 100.0% → 100.0%
-- **Trials**: 24
-
 ### Statistical
 
-- **Accuracy**: 5.3% → 4.5% (-0.8%)
+- **Accuracy**: 5.5% → 4.8% (-0.6%)
 - **Token Compression**: 97.8%
-- **Hallucination Rate**: 90.9% → 90.9%
-- **Trials**: 132
-
-### Trend
-
-- **Accuracy**: 0.0% → 0.0% (+0.0%)
-- **Token Compression**: 99.2%
-- **Hallucination Rate**: 0.0% → 0.0%
-- **Trials**: 10
+- **Hallucination Rate**: 21.5% → 17.6%
+- **Trials**: 330
 
 ## Methodology
 
@@ -63,5 +35,5 @@ This benchmark compares LLM performance on numerical analysis tasks under two co
 1. **Baseline**: Raw numerical data passed directly to Claude
 2. **Treatment**: Semantic Frame preprocessed output passed to Claude
 
-Each condition was tested with 2 trials per query type.
+Each condition was tested with 5 trials per query type.
 Accuracy is measured against deterministically computed ground truth.

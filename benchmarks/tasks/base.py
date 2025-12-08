@@ -111,21 +111,33 @@ class BaseTask(ABC):
         # Run baseline condition
         baseline_response = self.client.query_baseline(raw_data_json, query)
         if baseline_response.error:
-            # Log API error but continue - error is tracked in response
-            print(f"  WARNING: Baseline API error: {baseline_response.error}")
+            # Log API error - error is tracked in response and will affect accuracy metrics
+            print(
+                f"  WARNING: Baseline API error (answer will be marked incorrect): "
+                f"{baseline_response.error}"
+            )
         baseline_answer = baseline_response.parsed.get("answer")
-        baseline_correct, baseline_proximity = self.evaluate_answer(
-            baseline_answer, expected_answer, dataset
+        # Treat API errors as incorrect answers
+        baseline_correct, baseline_proximity = (
+            (False, 0.0)
+            if baseline_response.error
+            else self.evaluate_answer(baseline_answer, expected_answer, dataset)
         )
 
         # Run treatment condition
         treatment_response = self.client.query_treatment(semantic_output, query)
         if treatment_response.error:
-            # Log API error but continue - error is tracked in response
-            print(f"  WARNING: Treatment API error: {treatment_response.error}")
+            # Log API error - error is tracked in response and will affect accuracy metrics
+            print(
+                f"  WARNING: Treatment API error (answer will be marked incorrect): "
+                f"{treatment_response.error}"
+            )
         treatment_answer = treatment_response.parsed.get("answer")
-        treatment_correct, treatment_proximity = self.evaluate_answer(
-            treatment_answer, expected_answer, dataset
+        # Treat API errors as incorrect answers
+        treatment_correct, treatment_proximity = (
+            (False, 0.0)
+            if treatment_response.error
+            else self.evaluate_answer(treatment_answer, expected_answer, dataset)
         )
 
         return TaskResult(
@@ -195,6 +207,9 @@ class BaseTask(ABC):
         Run the full task benchmark.
 
         Returns list of TrialResults for both baseline and treatment conditions.
+
+        Raises:
+            RuntimeError: If max_consecutive_errors threshold is reached.
         """
         if n_trials is None:
             n_trials = self.config.n_trials
@@ -202,7 +217,10 @@ class BaseTask(ABC):
         datasets = self.generate_datasets()
         queries = self.get_queries()
 
-        results = []
+        results: list[TrialResult] = []
+        consecutive_errors = 0
+        total_errors = 0
+        max_consecutive = self.config.max_consecutive_errors
 
         for dataset in datasets:
             for query_name, query_template in queries.items():
@@ -222,8 +240,37 @@ class BaseTask(ABC):
                         expected_answer=expected,
                     )
 
+                    # Track consecutive API errors
+                    has_error = bool(
+                        task_result.baseline_response.error or task_result.treatment_response.error
+                    )
+                    if has_error:
+                        consecutive_errors += 1
+                        total_errors += 1
+                        if consecutive_errors >= max_consecutive:
+                            last_error = (
+                                task_result.baseline_response.error
+                                or task_result.treatment_response.error
+                            )
+                            error_msg = (
+                                f"Aborting: {consecutive_errors} consecutive API errors. "
+                                f"Total errors: {total_errors}. "
+                                f"Last error: {last_error}"
+                            )
+                            print(f"ERROR: {error_msg}", flush=True)
+                            raise RuntimeError(error_msg)
+                    else:
+                        consecutive_errors = 0  # Reset on success
+
                     # Convert to TrialResults for both conditions
                     results.append(self.convert_to_trial_result(task_result, "baseline"))
                     results.append(self.convert_to_trial_result(task_result, "treatment"))
+
+        # Log error summary if any occurred
+        if total_errors > 0:
+            print(
+                f"\nWARNING: {total_errors} API error(s) occurred during benchmark. "
+                f"These trials are marked as incorrect in results."
+            )
 
         return results

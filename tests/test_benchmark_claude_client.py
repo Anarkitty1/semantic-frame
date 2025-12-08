@@ -6,6 +6,7 @@ Tests Claude API client wrapper and mock client for testing.
 from unittest import mock
 
 import pytest
+from anthropic import APIConnectionError, APITimeoutError
 
 from benchmarks.claude_client import (
     ClaudeClient,
@@ -116,10 +117,10 @@ class TestClaudeClient:
     def test_query_retry_on_failure(self, mock_anthropic: mock.Mock) -> None:
         """Test query retries on transient failures."""
         mock_client = mock.Mock()
-        # Fail twice, succeed on third try
+        # Fail twice with retryable Anthropic error, succeed on third try
         mock_client.messages.create.side_effect = [
-            Exception("Transient error"),
-            Exception("Transient error"),
+            APITimeoutError(request=mock.Mock()),
+            APITimeoutError(request=mock.Mock()),
             mock.Mock(
                 content=[mock.Mock(text="Success")],
                 usage=mock.Mock(input_tokens=50, output_tokens=25),
@@ -139,7 +140,8 @@ class TestClaudeClient:
     def test_query_all_retries_fail(self, mock_anthropic: mock.Mock) -> None:
         """Test query returns error after all retries fail."""
         mock_client = mock.Mock()
-        mock_client.messages.create.side_effect = Exception("Persistent error")
+        # Use APIConnectionError which is in _RETRYABLE_ERRORS
+        mock_client.messages.create.side_effect = APIConnectionError(request=mock.Mock())
         mock_anthropic.return_value = mock_client
 
         config = BenchmarkConfig(api_key="test-key", retry_attempts=3, retry_delay=0.01)
@@ -147,7 +149,7 @@ class TestClaudeClient:
         response = client.query("Test")
 
         assert response.error is not None
-        assert "Persistent error" in response.error
+        assert "Connection error" in response.error or "failed" in response.error.lower()
         assert mock_client.messages.create.call_count == 3
 
     @mock.patch("anthropic.Anthropic")

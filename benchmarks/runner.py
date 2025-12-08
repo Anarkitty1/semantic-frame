@@ -124,9 +124,13 @@ class BenchmarkRunner:
         for key, trials in grouped.items():
             try:
                 aggregated[key] = AggregatedResults.from_trials(trials)
-            except Exception as e:
-                # Always log aggregation failures - they indicate data quality issues
-                error_msg = f"Could not aggregate {key}: {e}"
+            except (ValueError, TypeError, AttributeError) as e:
+                # ValueError: empty trials, invalid data
+                # TypeError: wrong types in trial data
+                # AttributeError: missing fields in trial results
+                error_msg = (
+                    f"Could not aggregate {key} ({len(trials)} trials): {type(e).__name__}: {e}"
+                )
                 print(f"ERROR: {error_msg}", flush=True)
                 failed_aggregations.append(key)
 

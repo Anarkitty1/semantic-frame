@@ -64,12 +64,23 @@ mcp = [
 validation = [
     "tiktoken>=0.5.0",
 ]
+viz = [
+    "matplotlib>=3.5",
+    "plotly>=5.0",
+]
+benchmarks = [
+    "anthropic>=0.20",
+    "matplotlib>=3.5",
+    "plotly>=5.0",
+]
 all = [
     "anthropic>=0.20",
     "langchain>=0.1",
     "crewai>=0.1",
     "mcp>=1.0.0",
     "tiktoken>=0.5.0",
+    "matplotlib>=3.5",
+    "plotly>=5.0",
 ]
 
 [project.urls]

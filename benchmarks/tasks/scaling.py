@@ -4,6 +4,7 @@ Scaling Task (T6)
 Large-scale data handling benchmark.
 """
 
+import re
 from typing import Any
 
 import numpy as np
@@ -90,8 +91,6 @@ class ScalingTask(BaseTask):
         try:
             pred_num = float(predicted)
         except (ValueError, TypeError):
-            import re
-
             numbers = re.findall(r"[-+]?\d*\.?\d+", str(predicted))
             if not numbers:
                 return False, 0.0

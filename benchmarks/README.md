@@ -38,6 +38,7 @@ The benchmark compares LLM performance under two conditions:
 | **T2: Trend** | Trend classification (rising/falling/flat) | Classification accuracy |
 | **T3: Anomaly** | Anomaly detection | F1 score |
 | **T4: Comparative** | Multi-series comparison | Comparison accuracy |
+| **T5: Multi-step** | Multi-step reasoning chains | Chain accuracy |
 | **T6: Scaling** | Performance at varying data sizes | Accuracy vs. scale |
 
 ### Metrics

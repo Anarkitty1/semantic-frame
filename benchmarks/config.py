@@ -164,6 +164,7 @@ class BenchmarkConfig:
     api_key: str | None = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY"))
     retry_attempts: int = 3
     retry_delay: float = 1.0
+    max_consecutive_errors: int = 5  # Abort after N consecutive API failures
 
     # Logging
     verbose: bool = True
@@ -178,6 +179,10 @@ class BenchmarkConfig:
             raise ValueError(f"retry_attempts must be > 0, got {self.retry_attempts}")
         if self.retry_delay < 0:
             raise ValueError(f"retry_delay must be >= 0, got {self.retry_delay}")
+        if self.max_consecutive_errors <= 0:
+            raise ValueError(
+                f"max_consecutive_errors must be > 0, got {self.max_consecutive_errors}"
+            )
 
         # Ensure directories exist
         self.output_dir.mkdir(parents=True, exist_ok=True)

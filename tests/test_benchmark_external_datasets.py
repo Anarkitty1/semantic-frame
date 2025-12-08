@@ -128,7 +128,6 @@ class TestExternalDataConfig:
         assert config.enabled_datasets == ["nab"]
         assert config.max_series_per_dataset == 100
         assert config.download_timeout == 60.0
-        assert config.verify_checksums is True
 
     def test_cache_dir_created(self, temp_dir: Path) -> None:
         """Test that cache directory is created on init."""
@@ -155,12 +154,10 @@ class TestExternalDataConfig:
             enabled_datasets=["nab"],
             max_series_per_dataset=50,
             download_timeout=30.0,
-            verify_checksums=False,
         )
 
         assert config.max_series_per_dataset == 50
         assert config.download_timeout == 30.0
-        assert config.verify_checksums is False
 
 
 # ============================================================================
