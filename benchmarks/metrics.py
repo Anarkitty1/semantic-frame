@@ -307,6 +307,445 @@ class CostMetrics:
         )
 
 
+# =============================================================================
+# Composite Metrics (Section 2.3 of Benchmark Methodology)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class ContextUtilizationMetrics:
+    """Context Utilization Efficiency (CUE) metrics.
+
+    Measures how efficiently tokens encode answerable information, combining
+    compression ratio with information preservation.
+
+    Formula:
+        CUE = (info_density_treatment / info_density_baseline) × compression_ratio
+
+    Where:
+        info_density = accuracy / tokens_used
+
+    A CUE > 1.0 indicates treatment is more efficient than baseline.
+    Target: CUE > 1.5 (treatment is 1.5x more efficient)
+
+    This dataclass is frozen (immutable) for thread safety and hashability.
+
+    References:
+        - Semantic Frame Benchmark Methodology, Section 2.1, lines 48-52
+    """
+
+    baseline_info_density: float
+    treatment_info_density: float
+    compression_ratio: float
+    cue_score: float
+
+    @classmethod
+    def compute(
+        cls,
+        baseline_accuracy: float,
+        baseline_tokens: int,
+        treatment_accuracy: float,
+        treatment_tokens: int,
+    ) -> ContextUtilizationMetrics:
+        """Compute CUE metrics from baseline and treatment results.
+
+        Args:
+            baseline_accuracy: Accuracy rate for baseline condition (0-1)
+            baseline_tokens: Total tokens used in baseline condition
+            treatment_accuracy: Accuracy rate for treatment condition (0-1)
+            treatment_tokens: Total tokens used in treatment condition
+
+        Returns:
+            ContextUtilizationMetrics with computed CUE score
+        """
+        # Calculate information density (accuracy per token)
+        baseline_info_density = baseline_accuracy / baseline_tokens if baseline_tokens > 0 else 0.0
+        treatment_info_density = (
+            treatment_accuracy / treatment_tokens if treatment_tokens > 0 else 0.0
+        )
+
+        # Calculate compression ratio
+        compression_ratio = 1 - (treatment_tokens / baseline_tokens) if baseline_tokens > 0 else 0.0
+
+        # Calculate CUE score
+        # CUE = (treatment_density / baseline_density) × compression_ratio
+        density_ratio = (
+            treatment_info_density / baseline_info_density if baseline_info_density > 0 else 0.0
+        )
+        cue_score = density_ratio * compression_ratio if compression_ratio > 0 else 0.0
+
+        return cls(
+            baseline_info_density=baseline_info_density,
+            treatment_info_density=treatment_info_density,
+            compression_ratio=compression_ratio,
+            cue_score=cue_score,
+        )
+
+
+@dataclass(frozen=True)
+class SemanticAlignmentScore:
+    """Semantic Alignment Score (SAS) for multi-faceted evaluation.
+
+    For qualitative descriptions (trend, volatility, pattern recognition),
+    this metric provides a weighted average of different accuracy dimensions.
+
+    Formula:
+        SAS = weighted_average(
+            trend_direction_correct × 0.4,
+            magnitude_category_correct × 0.3,
+            anomaly_detection_correct × 0.3
+        )
+
+    This dataclass is frozen (immutable) for thread safety and hashability.
+
+    References:
+        - Semantic Frame Benchmark Methodology, Section 2.2, lines 77-85
+    """
+
+    trend_accuracy: float
+    magnitude_accuracy: float
+    anomaly_accuracy: float
+    sas_score: float
+
+    # Configurable weights (class-level constants)
+    TREND_WEIGHT: float = 0.4
+    MAGNITUDE_WEIGHT: float = 0.3
+    ANOMALY_WEIGHT: float = 0.3
+
+    @classmethod
+    def compute(
+        cls,
+        trend_correct: int,
+        trend_total: int,
+        magnitude_correct: int,
+        magnitude_total: int,
+        anomaly_correct: int,
+        anomaly_total: int,
+    ) -> SemanticAlignmentScore:
+        """Compute SAS from task-specific accuracy counts.
+
+        Args:
+            trend_correct: Number of correct trend classifications
+            trend_total: Total trend classification attempts
+            magnitude_correct: Number of correct magnitude classifications
+            magnitude_total: Total magnitude classification attempts
+            anomaly_correct: Number of correct anomaly detections
+            anomaly_total: Total anomaly detection attempts
+
+        Returns:
+            SemanticAlignmentScore with computed SAS score
+        """
+        # Calculate individual accuracies
+        trend_accuracy = trend_correct / trend_total if trend_total > 0 else 0.0
+        magnitude_accuracy = magnitude_correct / magnitude_total if magnitude_total > 0 else 0.0
+        anomaly_accuracy = anomaly_correct / anomaly_total if anomaly_total > 0 else 0.0
+
+        # Calculate weighted SAS score
+        sas_score = (
+            cls.TREND_WEIGHT * trend_accuracy
+            + cls.MAGNITUDE_WEIGHT * magnitude_accuracy
+            + cls.ANOMALY_WEIGHT * anomaly_accuracy
+        )
+
+        return cls(
+            trend_accuracy=trend_accuracy,
+            magnitude_accuracy=magnitude_accuracy,
+            anomaly_accuracy=anomaly_accuracy,
+            sas_score=sas_score,
+        )
+
+    @classmethod
+    def from_trial_results(
+        cls,
+        trials: list[TrialResult],
+        trend_queries: set[str] | None = None,
+        magnitude_queries: set[str] | None = None,
+        anomaly_queries: set[str] | None = None,
+    ) -> SemanticAlignmentScore:
+        """Compute SAS from a list of TrialResults.
+
+        Args:
+            trials: List of TrialResult objects
+            trend_queries: Query names considered trend-related (default: direction, slope)
+            magnitude_queries: Query names for magnitude (default: strength, std)
+            anomaly_queries: Query names for anomaly (default: presence, count, locations)
+
+        Returns:
+            SemanticAlignmentScore computed from trial results
+        """
+        # Default query categorizations
+        if trend_queries is None:
+            trend_queries = {"direction", "slope", "trend"}
+        if magnitude_queries is None:
+            magnitude_queries = {"strength", "std", "volatility", "magnitude"}
+        if anomaly_queries is None:
+            anomaly_queries = {"presence", "count", "locations", "anomaly", "anomalies"}
+
+        # Count correct/total for each category
+        trend_correct = trend_total = 0
+        magnitude_correct = magnitude_total = 0
+        anomaly_correct = anomaly_total = 0
+
+        for trial in trials:
+            query_lower = trial.query.lower()
+
+            if any(tq in query_lower for tq in trend_queries):
+                trend_total += 1
+                if trial.is_correct:
+                    trend_correct += 1
+            elif any(mq in query_lower for mq in magnitude_queries):
+                magnitude_total += 1
+                if trial.is_correct:
+                    magnitude_correct += 1
+            elif any(aq in query_lower for aq in anomaly_queries):
+                anomaly_total += 1
+                if trial.is_correct:
+                    anomaly_correct += 1
+
+        return cls.compute(
+            trend_correct=trend_correct,
+            trend_total=trend_total,
+            magnitude_correct=magnitude_correct,
+            magnitude_total=magnitude_total,
+            anomaly_correct=anomaly_correct,
+            anomaly_total=anomaly_total,
+        )
+
+
+@dataclass(frozen=True)
+class EfficiencyAccuracyProduct:
+    """Efficiency-Accuracy Product (EAP) metric.
+
+    A single composite metric balancing token compression vs accuracy.
+    Values > 0.90 indicate strong overall performance.
+
+    Formula:
+        EAP = TCR × EMA
+
+    Where:
+        TCR = Token Compression Ratio (1 - treatment_tokens/baseline_tokens)
+        EMA = Exact Match Accuracy (correct_responses / total_responses)
+
+    This dataclass is frozen (immutable) for thread safety and hashability.
+
+    References:
+        - Semantic Frame Benchmark Methodology, Section 2.3, lines 98-101
+    """
+
+    compression_ratio: float
+    accuracy: float
+    eap_score: float
+    meets_threshold: bool
+
+    # Performance threshold
+    THRESHOLD: float = 0.90
+
+    @classmethod
+    def compute(
+        cls,
+        compression_ratio: float,
+        accuracy: float,
+    ) -> EfficiencyAccuracyProduct:
+        """Compute EAP from compression ratio and accuracy.
+
+        Args:
+            compression_ratio: Token compression ratio (0-1, higher is better)
+            accuracy: Exact match accuracy (0-1, higher is better)
+
+        Returns:
+            EfficiencyAccuracyProduct with computed EAP score
+        """
+        eap_score = compression_ratio * accuracy
+        meets_threshold = eap_score >= cls.THRESHOLD
+
+        return cls(
+            compression_ratio=compression_ratio,
+            accuracy=accuracy,
+            eap_score=eap_score,
+            meets_threshold=meets_threshold,
+        )
+
+    @classmethod
+    def from_aggregated_results(
+        cls,
+        baseline: AggregatedResults,
+        treatment: AggregatedResults,
+    ) -> EfficiencyAccuracyProduct:
+        """Compute EAP from aggregated baseline and treatment results.
+
+        Args:
+            baseline: Aggregated results from baseline condition
+            treatment: Aggregated results from treatment condition
+
+        Returns:
+            EfficiencyAccuracyProduct computed from treatment metrics
+        """
+        return cls.compute(
+            compression_ratio=treatment.mean_compression_ratio,
+            accuracy=treatment.accuracy,
+        )
+
+
+@dataclass(frozen=True)
+class ParetoEfficiencyIndex:
+    """Pareto Efficiency Index (PEI) for accuracy vs token efficiency tradeoff.
+
+    Measures the area between baseline and treatment Pareto frontiers,
+    normalized to the baseline. A positive PEI indicates treatment dominates.
+
+    Methodology:
+        1. Plot accuracy vs. token count for baseline condition
+        2. Plot accuracy vs. token count for treatment condition
+        3. Calculate area between curves using trapezoidal rule
+        4. Normalize to baseline curve area
+
+    This dataclass is frozen (immutable) for thread safety and hashability.
+
+    References:
+        - Semantic Frame Benchmark Methodology, Section 2.3, lines 103-105
+    """
+
+    baseline_points: tuple[tuple[float, float], ...]  # (tokens, accuracy) tuples
+    treatment_points: tuple[tuple[float, float], ...]
+    baseline_area: float
+    treatment_area: float
+    pei_score: float
+
+    @classmethod
+    def compute(
+        cls,
+        baseline_results: list[AggregatedResults],
+        treatment_results: list[AggregatedResults],
+    ) -> ParetoEfficiencyIndex:
+        """Compute PEI from lists of aggregated results.
+
+        Args:
+            baseline_results: List of AggregatedResults for baseline condition
+            treatment_results: List of AggregatedResults for treatment condition
+
+        Returns:
+            ParetoEfficiencyIndex with computed PEI score
+        """
+        # Extract (tokens, accuracy) points
+        baseline_points = [(float(r.total_raw_tokens), r.accuracy) for r in baseline_results]
+        treatment_points = [
+            (float(r.total_compressed_tokens), r.accuracy) for r in treatment_results
+        ]
+
+        # Sort by tokens (x-axis)
+        baseline_points = sorted(baseline_points, key=lambda p: p[0])
+        treatment_points = sorted(treatment_points, key=lambda p: p[0])
+
+        # Calculate areas under curves using trapezoidal rule
+        baseline_area = cls._calculate_area(baseline_points)
+        treatment_area = cls._calculate_area(treatment_points)
+
+        # PEI = normalized area difference
+        # Positive means treatment is better (more area = better accuracy per token)
+        if baseline_area > 0:
+            pei_score = (treatment_area - baseline_area) / baseline_area
+        else:
+            pei_score = 0.0 if treatment_area == 0 else float("inf")
+
+        return cls(
+            baseline_points=tuple(baseline_points),
+            treatment_points=tuple(treatment_points),
+            baseline_area=baseline_area,
+            treatment_area=treatment_area,
+            pei_score=pei_score,
+        )
+
+    @staticmethod
+    def _calculate_area(points: list[tuple[float, float]]) -> float:
+        """Calculate area under curve using trapezoidal rule.
+
+        Args:
+            points: List of (x, y) tuples, sorted by x
+
+        Returns:
+            Area under the curve
+        """
+        if len(points) < 2:
+            return 0.0
+
+        area = 0.0
+        for i in range(len(points) - 1):
+            x1, y1 = points[i]
+            x2, y2 = points[i + 1]
+            # Trapezoidal rule: area = (x2-x1) * (y1+y2) / 2
+            area += (x2 - x1) * (y1 + y2) / 2
+
+        return area
+
+    @classmethod
+    def from_trial_results(
+        cls,
+        baseline_trials: list[TrialResult],
+        treatment_trials: list[TrialResult],
+    ) -> ParetoEfficiencyIndex:
+        """Compute PEI directly from trial results.
+
+        Groups trials by task type and computes Pareto efficiency.
+
+        Args:
+            baseline_trials: List of TrialResults from baseline condition
+            treatment_trials: List of TrialResults from treatment condition
+
+        Returns:
+            ParetoEfficiencyIndex computed from trial data
+        """
+        # Extract individual trial points
+        baseline_points = [
+            (float(t.token_metrics.raw_tokens), 1.0 if t.is_correct else 0.0)
+            for t in baseline_trials
+        ]
+        treatment_points = [
+            (float(t.token_metrics.compressed_tokens), 1.0 if t.is_correct else 0.0)
+            for t in treatment_trials
+        ]
+
+        # Sort and deduplicate by averaging accuracy at same token count
+        baseline_points = cls._aggregate_points(baseline_points)
+        treatment_points = cls._aggregate_points(treatment_points)
+
+        baseline_area = cls._calculate_area(baseline_points)
+        treatment_area = cls._calculate_area(treatment_points)
+
+        if baseline_area > 0:
+            pei_score = (treatment_area - baseline_area) / baseline_area
+        else:
+            pei_score = 0.0 if treatment_area == 0 else float("inf")
+
+        return cls(
+            baseline_points=tuple(baseline_points),
+            treatment_points=tuple(treatment_points),
+            baseline_area=baseline_area,
+            treatment_area=treatment_area,
+            pei_score=pei_score,
+        )
+
+    @staticmethod
+    def _aggregate_points(
+        points: list[tuple[float, float]],
+    ) -> list[tuple[float, float]]:
+        """Aggregate points with same x value by averaging y values.
+
+        Args:
+            points: List of (x, y) tuples
+
+        Returns:
+            Deduplicated list sorted by x, with averaged y values
+        """
+        from collections import defaultdict
+
+        x_to_ys: defaultdict[float, list[float]] = defaultdict(list)
+        for x, y in points:
+            x_to_ys[x].append(y)
+
+        aggregated = [(x, sum(ys) / len(ys)) for x, ys in x_to_ys.items()]
+        return sorted(aggregated, key=lambda p: p[0])
+
+
 @dataclass
 class TrialResult:
     """Results from a single benchmark trial."""
