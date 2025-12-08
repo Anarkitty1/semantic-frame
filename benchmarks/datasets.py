@@ -5,7 +5,7 @@ Synthetic and real-world dataset generation for benchmarking.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -41,14 +41,8 @@ class SyntheticDataset:
 class AnomalyDataset(SyntheticDataset):
     """Dataset with injected anomalies."""
 
-    anomaly_indices: list[int] = None
-    anomaly_types: list[AnomalyType] = None
-
-    def __post_init__(self):
-        if self.anomaly_indices is None:
-            self.anomaly_indices = []
-        if self.anomaly_types is None:
-            self.anomaly_types = []
+    anomaly_indices: list[int] = field(default_factory=list)
+    anomaly_types: list[AnomalyType] = field(default_factory=list)
 
 
 class DatasetGenerator:

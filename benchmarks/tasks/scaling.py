@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from benchmarks.config import STATISTICAL_QUERIES, TaskType
+from benchmarks.config import STATISTICAL_QUERIES, DataPattern, TaskType
 from benchmarks.datasets import SyntheticDataset
 from benchmarks.metrics import TrialResult
 from benchmarks.tasks.base import BaseTask
@@ -59,7 +59,7 @@ class ScalingTask(BaseTask):
                         "count": size,
                         "scale": size,
                     },
-                    pattern=None,
+                    pattern=DataPattern.RANDOM,
                     seed=self.config.datasets.default_seed,
                 )
             )

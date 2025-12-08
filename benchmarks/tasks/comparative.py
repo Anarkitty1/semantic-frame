@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from benchmarks.config import COMPARATIVE_QUERIES, TaskType
+from benchmarks.config import COMPARATIVE_QUERIES, DataPattern, TaskType
 from benchmarks.datasets import SyntheticDataset
 from benchmarks.tasks.base import BaseTask
 
@@ -24,9 +24,9 @@ class ComparativeTask(BaseTask):
 
     task_type = TaskType.COMPARATIVE
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._series_pairs = []  # Store generated pairs for reference
+        self._series_pairs: list[tuple[SyntheticDataset, SyntheticDataset]] = []
 
     def generate_datasets(self) -> list[SyntheticDataset]:
         """Generate dataset pairs for comparison testing."""
@@ -46,7 +46,7 @@ class ComparativeTask(BaseTask):
                 "std": np.std(series_a),
                 "higher_mean": "Series B",  # B has higher mean
             },
-            pattern=None,
+            pattern=DataPattern.MIXED,
             seed=42,
         )
         pair1_b = SyntheticDataset(
@@ -56,7 +56,7 @@ class ComparativeTask(BaseTask):
                 "mean": np.mean(series_b),
                 "std": np.std(series_b),
             },
-            pattern=None,
+            pattern=DataPattern.MIXED,
             seed=42,
         )
         self._series_pairs.append((pair1_a, pair1_b))
@@ -73,7 +73,7 @@ class ComparativeTask(BaseTask):
                 "std": np.std(series_a),
                 "more_volatile": "Series B",  # B is more volatile
             },
-            pattern=None,
+            pattern=DataPattern.MIXED,
             seed=42,
         )
         pair2_b = SyntheticDataset(
@@ -83,7 +83,7 @@ class ComparativeTask(BaseTask):
                 "mean": np.mean(series_b),
                 "std": np.std(series_b),
             },
-            pattern=None,
+            pattern=DataPattern.MIXED,
             seed=42,
         )
         self._series_pairs.append((pair2_a, pair2_b))
@@ -102,7 +102,7 @@ class ComparativeTask(BaseTask):
                 "std": np.std(series_a),
                 "correlation": "positively correlated" if corr > 0.5 else "uncorrelated",
             },
-            pattern=None,
+            pattern=DataPattern.MIXED,
             seed=42,
         )
         pair3_b = SyntheticDataset(
@@ -112,7 +112,7 @@ class ComparativeTask(BaseTask):
                 "mean": np.mean(series_b),
                 "std": np.std(series_b),
             },
-            pattern=None,
+            pattern=DataPattern.MIXED,
             seed=42,
         )
         self._series_pairs.append((pair3_a, pair3_b))
@@ -130,7 +130,7 @@ class ComparativeTask(BaseTask):
                 "std": np.std(series_a),
                 "stronger_trend": "Series B",  # B has stronger trend
             },
-            pattern=None,
+            pattern=DataPattern.MIXED,
             seed=42,
         )
         pair4_b = SyntheticDataset(
@@ -140,7 +140,7 @@ class ComparativeTask(BaseTask):
                 "mean": np.mean(series_b),
                 "std": np.std(series_b),
             },
-            pattern=None,
+            pattern=DataPattern.MIXED,
             seed=42,
         )
         self._series_pairs.append((pair4_a, pair4_b))

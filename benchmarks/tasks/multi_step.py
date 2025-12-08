@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from benchmarks.config import TaskType
+from benchmarks.config import DataPattern, TaskType
 from benchmarks.datasets import SyntheticDataset
 from benchmarks.tasks.base import BaseTask
 
@@ -94,7 +94,7 @@ class MultiStepTask(BaseTask):
                     "range_pct": range_pct,
                     "normalized_max": normalized_max,
                 },
-                pattern=None,
+                pattern=DataPattern.LINEAR_TREND,
                 seed=self.config.datasets.default_seed,
             )
         )
@@ -125,7 +125,7 @@ class MultiStepTask(BaseTask):
                     "range_pct": (iqr2 / range_val2 * 100) if range_val2 > 0 else 0,
                     "normalized_max": 1.0,  # max normalized is always 1
                 },
-                pattern=None,
+                pattern=DataPattern.RANDOM,
                 seed=self.config.datasets.default_seed,
             )
         )

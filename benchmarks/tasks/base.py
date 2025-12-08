@@ -15,7 +15,7 @@ from benchmarks.metrics import (
     CostMetrics,
     TokenMetrics,
     TrialResult,
-    # detect_hallucination,  # Disabled - see convert_to_trial_result()
+    detect_hallucination,
 )
 
 
@@ -45,11 +45,14 @@ class TaskResult:
     # Semantic Frame output (for reference)
     semantic_frame_output: str
 
+    # Raw data for hallucination detection
+    raw_data: list[float] | None = None
+
 
 class BaseTask(ABC):
     """Abstract base class for benchmark tasks."""
 
-    task_type: TaskType = None
+    task_type: TaskType  # Must be set by subclasses
 
     def __init__(self, config: BenchmarkConfig, client: ClaudeClient):
         self.config = config
@@ -138,6 +141,7 @@ class BaseTask(ABC):
             treatment_tokens=treatment_tokens,
             expected_answer=expected_answer,
             semantic_frame_output=semantic_output,
+            raw_data=dataset.data.tolist(),
         )
 
     def convert_to_trial_result(
@@ -157,12 +161,14 @@ class BaseTask(ABC):
             correct = task_result.treatment_correct
             tokens = task_result.treatment_tokens
 
-        # NOTE: Hallucination detection is disabled - requires raw data array
-        # which is not currently stored in TaskResult. To enable:
-        # 1. Add raw_data: list[float] field to TaskResult
-        # 2. Pass dataset.data.tolist() when creating TaskResult
-        # 3. Use: detect_hallucination(response.content, raw_data, semantic_frame_output)
-        hallucination = False  # Disabled - always reports no hallucination
+        # Detect hallucinations using raw data
+        hallucination = False
+        if task_result.raw_data:
+            hallucination = detect_hallucination(
+                response.content,
+                task_result.raw_data,
+                task_result.semantic_frame_output,
+            )
 
         return TrialResult(
             task_type=self.task_type.value,

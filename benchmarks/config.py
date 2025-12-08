@@ -74,6 +74,20 @@ class DatasetConfig:
     min_variables: int = 2
     max_variables: int = 10
 
+    def __post_init__(self) -> None:
+        """Validate dataset configuration."""
+        if not (self.small_size < self.medium_size < self.large_size < self.very_large_size):
+            raise ValueError(
+                "Dataset sizes must be in ascending order: "
+                f"small_size ({self.small_size}) < medium_size ({self.medium_size}) "
+                f"< large_size ({self.large_size}) < very_large_size ({self.very_large_size})"
+            )
+        if self.min_variables > self.max_variables:
+            raise ValueError(
+                f"min_variables ({self.min_variables}) must be <= "
+                f"max_variables ({self.max_variables})"
+            )
+
 
 @dataclass
 class MetricThresholds:
@@ -99,6 +113,27 @@ class MetricThresholds:
 
     # Hallucination
     max_hallucination_rate: float = 0.02  # Max 2% hallucination
+
+    def __post_init__(self) -> None:
+        """Validate metric thresholds are in valid ranges."""
+        rate_fields = [
+            ("min_compression_ratio", self.min_compression_ratio),
+            ("target_compression_ratio", self.target_compression_ratio),
+            ("baseline_statistical_accuracy", self.baseline_statistical_accuracy),
+            ("baseline_trend_accuracy", self.baseline_trend_accuracy),
+            ("baseline_anomaly_f1", self.baseline_anomaly_f1),
+            ("baseline_comparative_accuracy", self.baseline_comparative_accuracy),
+            ("baseline_multi_step_accuracy", self.baseline_multi_step_accuracy),
+            ("target_statistical_accuracy", self.target_statistical_accuracy),
+            ("target_trend_accuracy", self.target_trend_accuracy),
+            ("target_anomaly_f1", self.target_anomaly_f1),
+            ("target_comparative_accuracy", self.target_comparative_accuracy),
+            ("target_multi_step_accuracy", self.target_multi_step_accuracy),
+            ("max_hallucination_rate", self.max_hallucination_rate),
+        ]
+        for name, value in rate_fields:
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be in [0.0, 1.0], got {value}")
 
 
 @dataclass
@@ -134,8 +169,17 @@ class BenchmarkConfig:
     verbose: bool = True
     save_raw_responses: bool = True
 
-    def __post_init__(self):
-        """Ensure directories exist."""
+    def __post_init__(self) -> None:
+        """Validate configuration and ensure directories exist."""
+        # Validate execution settings
+        if self.n_trials <= 0:
+            raise ValueError(f"n_trials must be > 0, got {self.n_trials}")
+        if self.retry_attempts <= 0:
+            raise ValueError(f"retry_attempts must be > 0, got {self.retry_attempts}")
+        if self.retry_delay < 0:
+            raise ValueError(f"retry_delay must be >= 0, got {self.retry_delay}")
+
+        # Ensure directories exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 

@@ -9,35 +9,35 @@
 - [ ] `test_runner.py` - Test benchmark orchestration, result aggregation
 - [ ] `test_tasks.py` - Test task implementations and evaluation logic
 
-### Fix Type Errors (mypy)
-- [ ] Add `-> None` return types to functions missing annotations
-  - `config.py:131` - `__post_init__`
-  - `datasets.py:45,59` - `__post_init__`, `reset_seed`
-  - `claude_client.py:37` - `_initialize_client`
-  - `demo.py:22,29,84,103` - various functions
-- [ ] Fix numpy floating type assignments in `metrics.py:312-323`
-  - Use `float()` wrapper on numpy results
-- [ ] Fix `AnomalyDataset` mutable default fields (`datasets.py:42-43`)
-  - Use `field(default_factory=list)` instead of `= None`
+### ~~Fix Type Errors (mypy)~~ ✅ COMPLETED
+- [x] Add `-> None` return types to functions missing annotations
+  - `config.py:137` - `__post_init__`
+  - `datasets.py:47` - removed `__post_init__` (using `field(default_factory)`)
+  - `comparative.py:27` - `__init__`
+- [x] Fix `AnomalyDataset` mutable default fields (`datasets.py:42-43`)
+  - Used `field(default_factory=list)` instead of `= None`
+- [x] Fix `pattern=None` issues in task files
+  - Used appropriate `DataPattern` enum values instead of `None`
+- [x] Fix `task_type: TaskType = None` in `BaseTask`
+  - Changed to `task_type: TaskType` (class attribute annotation only)
 
-### Enable Hallucination Detection
-Currently disabled in `tasks/base.py:159-164`. To enable:
-1. [ ] Add `raw_data: list[float]` field to `TaskResult` dataclass
-2. [ ] Pass `dataset.data.tolist()` when creating `TaskResult` in `run_single_trial()`
-3. [ ] Uncomment `detect_hallucination` import
-4. [ ] Update `convert_to_trial_result()` to call `detect_hallucination()` with actual data
+### ~~Enable Hallucination Detection~~ ✅ COMPLETED
+- [x] Add `raw_data: list[float]` field to `TaskResult` dataclass
+- [x] Pass `dataset.data.tolist()` when creating `TaskResult` in `run_single_trial()`
+- [x] Uncomment `detect_hallucination` import
+- [x] Update `convert_to_trial_result()` to call `detect_hallucination()` with actual data
 
 ## Medium Priority
 
-### Add Input Validation
-- [ ] Add `__post_init__` validation to `BenchmarkConfig`
+### ~~Add Input Validation~~ ✅ COMPLETED
+- [x] Add `__post_init__` validation to `BenchmarkConfig`
   - `n_trials > 0`
   - `retry_attempts > 0`
   - `retry_delay >= 0`
-- [ ] Add `__post_init__` validation to `DatasetConfig`
+- [x] Add `__post_init__` validation to `DatasetConfig`
   - `small_size < medium_size < large_size < very_large_size`
   - `min_variables <= max_variables`
-- [ ] Add `__post_init__` validation to `MetricThresholds`
+- [x] Add `__post_init__` validation to `MetricThresholds`
   - All rates in `[0.0, 1.0]`
 - [ ] Add input validation to dataset generators
   - `n > 0`
@@ -81,3 +81,6 @@ Currently disabled in `tasks/base.py:159-164`. To enable:
 - [x] Fix silent API failures - Added error logging
 - [x] Fix silent aggregation errors - Always log failures
 - [x] Document disabled hallucination detection - Clear TODO comments added
+- [x] Fix all mypy type errors (17 errors fixed) - Added return type annotations, fixed mutable defaults, fixed pattern=None issues
+- [x] Enable hallucination detection - Added `raw_data` field to `TaskResult`, updated `convert_to_trial_result()` to call `detect_hallucination()`
+- [x] Add input validation to configs - Added `__post_init__` validation to `BenchmarkConfig`, `DatasetConfig`, and `MetricThresholds`
