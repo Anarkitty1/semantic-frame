@@ -52,7 +52,10 @@ class ModelConfig:
     model: str = "claude-sonnet-4-20250514"
     temperature: float = 0.0  # Deterministic for reproducibility
     max_tokens: int = 1000
-    timeout: float = 60.0
+    timeout: float = 180.0  # Base timeout in seconds
+    # Timeout scaling for large prompts (CLI backend)
+    timeout_per_1k_chars: float = 10.0  # Extra seconds per 1K chars of prompt
+    max_timeout: float = 600.0  # Maximum timeout (10 minutes)
 
 
 @dataclass
@@ -64,6 +67,9 @@ class DatasetConfig:
     medium_size: int = 1_000
     large_size: int = 10_000
     very_large_size: int = 100_000
+
+    # CLI backend limits (large prompts cause timeouts)
+    cli_max_dataset_size: int = 1_000  # Max points for CLI backend
 
     # Default parameters
     default_seed: int = 42
@@ -158,7 +164,11 @@ class BenchmarkConfig:
     n_trials: int = 30  # Minimum trials per condition for statistical power
     quick_mode_trials: int = 5  # Reduced trials for quick validation
     random_seed: int = 42
-    parallel_workers: int = 1  # Sequential by default for API rate limits
+    parallel_workers: int = 1  # Baseline vs treatment parallelism (within trial)
+    trial_parallelism: int = 1  # Multiple trials in parallel (max 4 for rate limits)
+
+    # Large dataset handling
+    skip_baseline_above_n_points: int = 5_000  # Skip baseline for very large datasets
 
     # API settings
     api_key: str | None = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY"))

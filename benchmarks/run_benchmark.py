@@ -136,6 +136,36 @@ def main() -> None:
         help="Visualization backend (default: matplotlib)",
     )
 
+    parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Run baseline and treatment conditions in parallel (2x speedup)",
+    )
+
+    parser.add_argument(
+        "--trial-parallelism",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Run N trials in parallel (max 4 for rate limits). Default: 1",
+    )
+
+    parser.add_argument(
+        "--max-data-size",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Maximum data points per dataset. Auto-limited for CLI backend.",
+    )
+
+    parser.add_argument(
+        "--skip-baseline-above",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Skip baseline for datasets with more than N points (default: 5000)",
+    )
+
     args = parser.parse_args()
 
     # Configure
@@ -152,10 +182,46 @@ def main() -> None:
 
     config.verbose = not args.quiet
 
+    # Enable parallel execution if requested
+    if args.parallel:
+        config.parallel_workers = 2  # Baseline and treatment in parallel
+
+    # Apply trial parallelism
+    if args.trial_parallelism > 1:
+        config.trial_parallelism = args.trial_parallelism
+        if args.trial_parallelism > 4:
+            print(f"WARNING: Using {args.trial_parallelism} parallel workers may hit rate limits")
+
+    # Apply skip baseline threshold
+    if args.skip_baseline_above is not None:
+        config.skip_baseline_above_n_points = args.skip_baseline_above
+
     # Determine backend (--mock flag takes precedence for backwards compatibility)
     backend = BackendType(args.backend)
     if args.mock:
         backend = BackendType.MOCK
+
+    # Apply CLI backend optimizations
+    if backend == BackendType.CLAUDE_CODE:
+        # Auto-limit dataset sizes for CLI backend to prevent timeouts
+        max_size = args.max_data_size or config.datasets.cli_max_dataset_size
+        if config.datasets.medium_size > max_size:
+            config.datasets.medium_size = max_size
+        if config.datasets.large_size > max_size:
+            config.datasets.large_size = max_size
+        if config.datasets.very_large_size > max_size:
+            config.datasets.very_large_size = max_size
+        if config.verbose:
+            print(f"CLI backend: Dataset sizes limited to {max_size} points")
+    elif args.max_data_size:
+        # Apply explicit max data size for any backend
+        max_size = args.max_data_size
+        if config.datasets.medium_size > max_size:
+            config.datasets.medium_size = max_size
+        if config.datasets.large_size > max_size:
+            config.datasets.large_size = max_size
+        if config.datasets.very_large_size > max_size:
+            config.datasets.very_large_size = max_size
 
     # Validate API key (only needed for API backend)
     if backend == BackendType.API and not config.api_key:
@@ -174,6 +240,10 @@ def main() -> None:
 
     # Build feature list
     features = []
+    if args.parallel:
+        features.append("parallel")
+    if config.trial_parallelism > 1:
+        features.append(f"{config.trial_parallelism}x trial parallelism")
     if args.robustness:
         features.append("robustness")
     if args.external_datasets:

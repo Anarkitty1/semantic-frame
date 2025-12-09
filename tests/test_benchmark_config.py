@@ -96,7 +96,9 @@ class TestModelConfig:
         assert config.model == "claude-sonnet-4-20250514"
         assert config.temperature == 0.0
         assert config.max_tokens == 1000
-        assert config.timeout == 60.0
+        assert config.timeout == 180.0  # Base timeout for CLI backend
+        assert config.timeout_per_1k_chars == 10.0  # Scaled timeout for large prompts
+        assert config.max_timeout == 600.0  # Maximum timeout (10 minutes)
 
     def test_custom_values(self) -> None:
         """Test custom configuration values."""

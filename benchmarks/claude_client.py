@@ -570,6 +570,33 @@ class ClaudeCodeClient:
                 error=f"Unexpected CLI response structure: {e}",
             )
 
+    def _calculate_timeout(self, prompt: str) -> float:
+        """
+        Calculate timeout based on prompt size.
+
+        Larger prompts (e.g., 1000+ data points) need more time.
+        Returns timeout in seconds.
+        """
+        base_timeout = self.config.model.timeout
+        extra_timeout = (len(prompt) / 1000) * self.config.model.timeout_per_1k_chars
+        return min(base_timeout + extra_timeout, self.config.model.max_timeout)
+
+    def warmup(self) -> bool:
+        """
+        Send minimal query to trigger CLI cache creation.
+
+        The first CLI call incurs ~40K token cache creation overhead.
+        A warmup query before benchmarks starts amortizes this cost.
+
+        Returns:
+            True if warmup succeeded, False otherwise.
+        """
+        try:
+            response = self.query("Respond with just the word 'ready'.")
+            return response.error is None
+        except Exception:
+            return False
+
     def query(
         self,
         prompt: str,
@@ -595,8 +622,8 @@ class ClaudeCodeClient:
         if system:
             cmd.extend(["--system-prompt", system])
 
-        # Calculate timeout in seconds (config is in seconds)
-        timeout_seconds = self.config.model.timeout
+        # Calculate timeout based on prompt size (larger prompts need more time)
+        timeout_seconds = self._calculate_timeout(prompt)
 
         last_error = None
         for attempt in range(self.config.retry_attempts):
