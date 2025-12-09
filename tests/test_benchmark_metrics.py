@@ -319,7 +319,7 @@ class TestDetectHallucination:
     def test_no_hallucination_with_valid_value(self) -> None:
         """Test no hallucination when using valid data values."""
         raw_data = [10.0, 20.0, 30.0, 40.0, 50.0]
-        response = "The mean is 30.0"
+        response = "Answer: 30.0"
         result = detect_hallucination(response, raw_data, "")
         assert result is False
 
@@ -327,7 +327,7 @@ class TestDetectHallucination:
         """Test no hallucination for derived statistics."""
         raw_data = [10.0, 20.0, 30.0, 40.0, 50.0]
         # Mean = 30, so 30 should be valid
-        response = "The average value is 30.0"
+        response = "Answer: 30.0"
         result = detect_hallucination(response, raw_data, "")
         assert result is False
 
@@ -335,7 +335,7 @@ class TestDetectHallucination:
         """Test hallucination detection for invented value."""
         raw_data = [10.0, 20.0, 30.0, 40.0, 50.0]
         # 999 is not in data or derivable
-        response = "The value is 999.5"
+        response = "Answer: 999.5"
         result = detect_hallucination(response, raw_data, "")
         assert result is True
 
@@ -344,22 +344,24 @@ class TestDetectHallucination:
         raw_data = [10.0, 20.0, 30.0]
         response = "The trend is rising"
         result = detect_hallucination(response, raw_data, "")
+        # No Answer: line means we can't detect hallucination
         assert result is False
 
     def test_small_numbers_ignored(self) -> None:
         """Test small numbers (like indices) are ignored."""
         raw_data = [100.0, 200.0, 300.0]
+        # No Answer: line, so detection returns False
         response = "At index 0 and 1"
         result = detect_hallucination(response, raw_data, "")
         assert result is False
 
     def test_empty_data(self) -> None:
         """Test with empty raw data."""
-        raw_data = []
-        response = "The value is 50"
+        raw_data: list[float] = []
+        response = "Answer: 50"
         result = detect_hallucination(response, raw_data, "")
-        # Should detect hallucination since no valid data exists
-        assert result is True
+        # With empty data, we return False (can't validate)
+        assert result is False
 
 
 class TestTrialResult:

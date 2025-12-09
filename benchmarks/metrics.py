@@ -917,52 +917,76 @@ def detect_hallucination(
     response: str,
     raw_data: list[float],
     semantic_frame_output: str,
-    threshold: float = 0.1,
+    threshold: float = 0.15,
 ) -> bool:
     """
     Detect if the LLM hallucinated numerical values.
 
     A hallucination is a numerical claim that cannot be derived from the input data.
-    """
-    # Extract all numbers from response
-    numbers_in_response = re.findall(r"[-+]?\d*\.?\d+", response)
+    Uses a conservative approach to avoid false positives from:
+    - Step numbers in reasoning (1, 2, 3, etc.)
+    - Intermediate calculations (sums, products)
+    - Formatting artifacts (comma-separated thousands)
 
-    if not numbers_in_response:
+    Args:
+        response: The LLM's response text.
+        raw_data: The original numerical data.
+        semantic_frame_output: The semantic frame description (unused but kept for API).
+        threshold: Relative tolerance for matching (default 0.15 = 15%).
+
+    Returns:
+        True if a likely hallucination is detected, False otherwise.
+    """
+    if not raw_data:
         return False
 
-    # Get valid numbers from input
-    data_set = set(raw_data)
+    # Extract the Answer line specifically - this is what we care about for hallucination
+    answer_match = re.search(r"Answer:\s*([-+]?\d[\d,]*\.?\d*)", response, re.IGNORECASE)
+    if not answer_match:
+        # No structured answer found - can't reliably detect hallucination
+        return False
 
-    # Also compute common derived values
-    if raw_data:
-        derived_values = {
-            np.mean(raw_data),
-            np.median(raw_data),
-            np.std(raw_data),
-            np.min(raw_data),
-            np.max(raw_data),
-            np.max(raw_data) - np.min(raw_data),  # range
-            np.percentile(raw_data, 25),
-            np.percentile(raw_data, 75),
-            np.percentile(raw_data, 95),
-            len(raw_data),
-        }
-        valid_numbers = data_set | derived_values
-    else:
-        valid_numbers = data_set
+    # Parse the answer value (handle comma-separated thousands)
+    answer_str = answer_match.group(1).replace(",", "")
+    try:
+        answer_num = float(answer_str)
+    except ValueError:
+        return False
 
-    # Check each number in response
-    for num_str in numbers_in_response:
-        try:
-            num = float(num_str)
-            # Check if this number is close to any valid number
-            is_valid = any(
-                abs(num - valid) <= abs(valid) * threshold if valid != 0 else abs(num) <= threshold
-                for valid in valid_numbers
-            )
-            if not is_valid and abs(num) > 1:  # Ignore small numbers like indices
-                return True
-        except ValueError:
-            continue
+    # Build set of valid numbers the answer could legitimately be
+    data_array = np.array(raw_data)
+    valid_numbers = set()
 
-    return False
+    # Raw data values
+    valid_numbers.update(raw_data)
+
+    # Common derived statistics
+    valid_numbers.add(float(np.mean(data_array)))
+    valid_numbers.add(float(np.median(data_array)))
+    valid_numbers.add(float(np.std(data_array)))
+    valid_numbers.add(float(np.var(data_array)))
+    valid_numbers.add(float(np.min(data_array)))
+    valid_numbers.add(float(np.max(data_array)))
+    valid_numbers.add(float(np.max(data_array) - np.min(data_array)))  # range
+    valid_numbers.add(float(np.sum(data_array)))  # sum (for intermediate calcs)
+    valid_numbers.add(float(len(data_array)))  # count
+
+    # Percentiles
+    for p in [5, 10, 25, 50, 75, 90, 95, 99]:
+        valid_numbers.add(float(np.percentile(data_array, p)))
+
+    # IQR
+    valid_numbers.add(float(np.percentile(data_array, 75) - np.percentile(data_array, 25)))
+
+    # Check if answer is close to any valid number
+    for valid in valid_numbers:
+        if valid == 0:
+            if abs(answer_num) <= threshold:
+                return False
+        else:
+            relative_error = abs(answer_num - valid) / abs(valid)
+            if relative_error <= threshold:
+                return False
+
+    # Answer doesn't match any valid derived value - likely hallucination
+    return True
