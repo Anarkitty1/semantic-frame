@@ -367,12 +367,20 @@ class TestMockClaudeClient:
 class TestClaudeCodeClient:
     """Tests for ClaudeCodeClient class."""
 
-    def test_init_verifies_cli(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_init_verifies_cli(self, mock_run: mock.Mock) -> None:
         """Test initialization verifies CLI is available."""
         config = BenchmarkConfig(random_seed=42)
+
+        # Mock successful version check
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
+
         # Should not raise if CLI is available
         client = ClaudeCodeClient(config)
         assert client.config == config
+        # Verify version check was called
+        mock_run.assert_called_once()
+        assert mock_run.call_args[0][0] == ["claude", "--version"]
 
     def test_init_without_cli_raises(self) -> None:
         """Test initialization raises if CLI not available."""
@@ -594,6 +602,94 @@ class TestClaudeCodeClient:
         call_args = mock_run.call_args
         assert "Mean: 2.0" in call_args.kwargs.get("input", "")
         assert "What is the mean?" in call_args.kwargs.get("input", "")
+
+    @mock.patch("subprocess.run")
+    def test_query_all_retries_exhausted(self, mock_run: mock.Mock) -> None:
+        """Test error message when all retries are exhausted."""
+        import subprocess
+
+        config = BenchmarkConfig(random_seed=42, retry_attempts=3, retry_delay=0.01)
+
+        # Version check succeeds, all queries time out
+        mock_run.side_effect = [
+            mock.Mock(returncode=0, stdout="1.0.0", stderr=""),  # version check
+            subprocess.TimeoutExpired(cmd="claude", timeout=60),  # first query
+            subprocess.TimeoutExpired(cmd="claude", timeout=60),  # second query
+            subprocess.TimeoutExpired(cmd="claude", timeout=60),  # third query
+        ]
+
+        client = ClaudeCodeClient(config)
+        response = client.query("What is 2+2?")
+
+        assert response.error is not None
+        assert "failed after 3 attempts" in response.error
+        assert mock_run.call_count == 4  # 1 version + 3 query attempts
+
+    def test_init_cli_returns_error_raises(self) -> None:
+        """Test initialization raises if CLI version check fails."""
+        config = BenchmarkConfig(random_seed=42)
+
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(
+                returncode=1,
+                stdout="",
+                stderr="Permission denied",
+            )
+            with pytest.raises(RuntimeError, match="claude CLI returned error"):
+                ClaudeCodeClient(config)
+
+    @mock.patch("subprocess.run")
+    def test_query_os_error(self, mock_run: mock.Mock) -> None:
+        """Test query handles OSError (non-retryable)."""
+        config = BenchmarkConfig(random_seed=42)
+
+        # Version check succeeds, query fails with OSError
+        mock_run.side_effect = [
+            mock.Mock(returncode=0, stdout="1.0.0", stderr=""),
+            OSError("No such file or directory"),
+        ]
+
+        client = ClaudeCodeClient(config)
+        response = client.query("test")
+
+        assert response.error is not None
+        assert "OS error" in response.error
+
+    def test_init_cli_timeout_raises(self) -> None:
+        """Test initialization raises if CLI times out during version check."""
+        import subprocess
+
+        config = BenchmarkConfig(random_seed=42)
+
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="claude", timeout=10)
+            with pytest.raises(RuntimeError, match="timed out during version check"):
+                ClaudeCodeClient(config)
+
+    @mock.patch("subprocess.run")
+    def test_query_retry_on_rate_limit_in_response(self, mock_run: mock.Mock) -> None:
+        """Test query retries when rate limit error is in JSON response."""
+        config = BenchmarkConfig(random_seed=42, retry_attempts=2, retry_delay=0.01)
+
+        mock_run.side_effect = [
+            mock.Mock(returncode=0, stdout="1.0.0", stderr=""),  # version check
+            mock.Mock(  # first query - rate limit in response
+                returncode=0,
+                stdout='{"is_error": true, "result": "Rate limit exceeded"}',
+                stderr="",
+            ),
+            mock.Mock(  # retry succeeds
+                returncode=0,
+                stdout='{"is_error": false, "result": "4", "usage": {}, "modelUsage": {}}',
+                stderr="",
+            ),
+        ]
+
+        client = ClaudeCodeClient(config)
+        response = client.query("test")
+
+        assert response.content == "4"
+        assert response.error is None
 
 
 class TestBackendType:

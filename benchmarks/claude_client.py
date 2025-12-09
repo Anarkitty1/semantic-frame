@@ -469,7 +469,12 @@ class ClaudeCodeClient:
                 "After installation, run 'claude' to authenticate."
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError("claude CLI timed out during version check")
+            raise RuntimeError(
+                "claude CLI timed out during version check (10s). "
+                "This may indicate the CLI is not properly installed or "
+                "is waiting for authentication. "
+                "Try running 'claude --version' manually to diagnose."
+            )
 
     def _get_model_alias(self) -> str:
         """Convert model config to CLI alias."""
@@ -490,7 +495,12 @@ class ClaudeCodeClient:
         latency_ms = (time.perf_counter() - start_time) * 1000
 
         if result.returncode != 0:
-            error_msg = result.stderr.strip() if result.stderr else "CLI execution failed"
+            if result.stderr and result.stderr.strip():
+                error_msg = result.stderr.strip()
+            else:
+                error_msg = f"CLI execution failed with exit code {result.returncode}"
+                if result.stdout:
+                    error_msg += f"\nOutput: {result.stdout[:500]}"
             return ClaudeResponse(
                 content="",
                 input_tokens=0,
@@ -578,8 +588,6 @@ class ClaudeCodeClient:
             "json",
             "--tools",
             "",  # Disable all tools for pure LLM response
-            "--max-turns",
-            "1",  # Single turn only
             "--model",
             self._get_model_alias(),
         ]
@@ -606,18 +614,43 @@ class ClaudeCodeClient:
 
                 response = self._parse_cli_response(result, start_time)
 
-                # Check if we got a retryable error
-                if response.error and self._is_retryable_error(response.error):
-                    last_error = response.error
-                    if attempt < self.config.retry_attempts - 1:
-                        delay = self.config.retry_delay * (2**attempt)
+                # Check if we got an error
+                if response.error:
+                    if self._is_retryable_error(response.error):
+                        last_error = response.error
+                        if attempt < self.config.retry_attempts - 1:
+                            delay = self.config.retry_delay * (2**attempt)
+                            print(
+                                f"  CLI error (attempt {attempt + 1}/"
+                                f"{self.config.retry_attempts}): "
+                                f"{response.error[:100]}"
+                            )
+                            print(f"    Retrying in {delay:.1f}s...")
+                            time.sleep(delay)
+                            continue
+                        else:
+                            # Final attempt failed with retryable error
+                            error_msg = (
+                                f"CLI call failed after {self.config.retry_attempts} attempts: "
+                                f"{response.error}"
+                            )
+                            print(f"ERROR: {error_msg}", flush=True)
+                            return ClaudeResponse(
+                                content="",
+                                input_tokens=0,
+                                output_tokens=0,
+                                latency_ms=response.latency_ms,
+                                model=self.config.model.model,
+                                parsed={},
+                                error=error_msg,
+                            )
+                    else:
+                        # Non-retryable error - log and return immediately
                         print(
-                            f"  CLI error (attempt {attempt + 1}/{self.config.retry_attempts}): "
-                            f"{response.error[:100]}"
+                            f"ERROR: CLI returned non-retryable error: {response.error}",
+                            flush=True,
                         )
-                        print(f"    Retrying in {delay:.1f}s...")
-                        time.sleep(delay)
-                        continue
+                        return response
 
                 return response
 

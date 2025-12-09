@@ -10,7 +10,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from benchmarks.claude_client import BackendType, get_client
+from benchmarks.claude_client import BackendType, ClientType, get_client
 from benchmarks.config import BenchmarkConfig, TaskType
 from benchmarks.logging_config import get_logger
 from benchmarks.metrics import AggregatedResults, TrialResult
@@ -46,6 +46,12 @@ class BenchmarkRunner:
         results = runner.run_all()
     """
 
+    client: ClientType
+    config: BenchmarkConfig
+    results: list[TrialResult]
+    aggregated: dict[str, AggregatedResults]
+    run_timestamp: datetime | None
+
     def __init__(
         self,
         config: BenchmarkConfig | None = None,
@@ -63,7 +69,7 @@ class BenchmarkRunner:
         else:
             self.client = get_client(self.config, backend=BackendType.API)
 
-        self.results: list[TrialResult] = []
+        self.results = []
         self.aggregated: dict[str, AggregatedResults] = {}
         self.run_timestamp: datetime | None = None
 

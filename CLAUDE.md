@@ -256,7 +256,7 @@ python -m benchmarks.run_benchmark --backend mock
 
 **Implementation Details:**
 - `ClaudeCodeClient` class in `benchmarks/claude_client.py` with same interface as API client
-- Uses `claude -p --output-format json --tools "" --max-turns 1` for pure LLM responses
+- Uses `claude -p --output-format json --tools ""` for pure LLM responses
 - Supports retry logic for transient errors (rate limits, timeouts)
 - Model aliases: haiku, sonnet, opus mapped from config
 

@@ -82,13 +82,6 @@ claude -p "prompt" --disallowedTools "Bash,Edit"
 
 For benchmarks, we should use `--tools ""` to get pure LLM responses without agentic tool use, matching the API behavior.
 
-### Agentic Turn Control
-
-```bash
-# Limit conversation turns (cost control)
-claude -p "prompt" --max-turns 1
-```
-
 ### Custom System Prompts
 
 ```bash
@@ -178,128 +171,22 @@ class ClaudeCodeClient:
     def query_treatment(self, semantic_frame_output: str, query: str) -> ClaudeResponse: ...
 ```
 
-### Implementation Strategy
+### Implementation
 
-```python
-import subprocess
-import json
-from typing import Any
+The complete `ClaudeCodeClient` implementation is in `benchmarks/claude_client.py`.
+Key design decisions documented in the class and method docstrings:
 
-class ClaudeCodeClient:
-    """Client using Claude Code CLI instead of API."""
+- Verifies CLI availability on initialization
+- Uses `--tools ""` for pure LLM responses (no agentic behavior)
+- Passes prompts via stdin for safe handling of special characters
+- Implements retry logic with exponential backoff for transient errors
+- Parses JSON output to match `ClaudeResponse` interface
 
-    def __init__(self, config: BenchmarkConfig) -> None:
-        self.config = config
-        self._verify_cli_available()
+### Parallel Execution
 
-    def _verify_cli_available(self) -> None:
-        """Check that claude CLI is available."""
-        try:
-            result = subprocess.run(
-                ["claude", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode != 0:
-                raise RuntimeError("claude CLI not available")
-        except FileNotFoundError:
-            raise RuntimeError(
-                "claude CLI not found. Install from: https://claude.ai/code"
-            )
-
-    def query(self, prompt: str, system: str | None = None) -> ClaudeResponse:
-        """Execute query via CLI subprocess."""
-        cmd = [
-            "claude", "-p",
-            "--output-format", "json",
-            "--tools", "",  # Disable tools for pure LLM response
-            "--max-turns", "1",  # Single turn only
-            "--model", self._get_model_alias(),
-        ]
-
-        if system:
-            cmd.extend(["--system-prompt", system])
-
-        # Pass prompt via stdin to handle special characters
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=self.config.model.timeout,
-        )
-
-        return self._parse_response(result)
-
-    def _get_model_alias(self) -> str:
-        """Convert model config to CLI alias."""
-        model = self.config.model.model
-        if "haiku" in model:
-            return "haiku"
-        elif "opus" in model:
-            return "opus"
-        else:
-            return "sonnet"  # Default
-
-    def _parse_response(self, result: subprocess.CompletedProcess) -> ClaudeResponse:
-        """Parse CLI JSON output to ClaudeResponse."""
-        if result.returncode != 0:
-            return ClaudeResponse(
-                content="",
-                input_tokens=0,
-                output_tokens=0,
-                latency_ms=0,
-                model=self.config.model.model,
-                parsed={},
-                error=result.stderr or "CLI execution failed",
-            )
-
-        try:
-            data = json.loads(result.stdout)
-            usage = data.get("usage", {})
-
-            return ClaudeResponse(
-                content=data.get("result", ""),
-                input_tokens=usage.get("input_tokens", 0),
-                output_tokens=usage.get("output_tokens", 0),
-                latency_ms=data.get("duration_ms", 0),
-                model=data.get("modelUsage", {}).keys().__iter__().__next__(),
-                parsed=parse_llm_response(data.get("result", "")),
-            )
-        except (json.JSONDecodeError, KeyError) as e:
-            return ClaudeResponse(
-                content="",
-                input_tokens=0,
-                output_tokens=0,
-                latency_ms=0,
-                model=self.config.model.model,
-                parsed={},
-                error=f"Failed to parse CLI response: {e}",
-            )
-```
-
-### Parallel Execution Option
-
-For faster benchmark runs with parallel queries:
-
-```python
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-class ClaudeCodeClient:
-    def __init__(self, config: BenchmarkConfig, parallel: int = 1) -> None:
-        self.config = config
-        self.parallel = parallel
-        self._executor = ThreadPoolExecutor(max_workers=parallel)
-
-    def query_batch(self, prompts: list[str]) -> list[ClaudeResponse]:
-        """Execute multiple queries in parallel."""
-        futures = [
-            self._executor.submit(self.query, prompt)
-            for prompt in prompts
-        ]
-        return [f.result() for f in as_completed(futures)]
-```
+**Note:** Parallel execution was considered but not implemented. Sequential execution
+is sufficient for benchmark validation and avoids rate limit concerns. The
+Recommendations section below explains this design decision.
 
 ## CLI Flags Summary
 
@@ -308,10 +195,8 @@ class ClaudeCodeClient:
 | `-p` / `--print` | Non-interactive mode | Required |
 | `--output-format json` | Structured output | Required for parsing |
 | `--tools ""` | Disable all tools | Required for pure LLM |
-| `--max-turns 1` | Single turn | Prevents runaway |
 | `--model <alias>` | Model selection | Match API model |
 | `--system-prompt` | Custom system prompt | Optional |
-| `--timeout` | Request timeout | Implicit via subprocess |
 
 ## Run Benchmark Integration
 
