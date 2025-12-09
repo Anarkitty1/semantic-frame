@@ -139,7 +139,7 @@ TOOL_USE_EXAMPLES: list[dict[str, Any]] = [
         "expected_output": (
             "The Server Latency (ms) data shows a flat/stationary pattern with "
             "stable variability. 1 anomaly detected at index 4 (value: 500.00). "
-            "Baseline: 100.00 (range: 98.00-500.00)."
+            "Mean: 142.86, Median: 100.00 (range: 98.00-500.00)."
         ),
     },
     # Example 2: Clear upward trend
@@ -151,7 +151,7 @@ TOOL_USE_EXAMPLES: list[dict[str, Any]] = [
         "expected_output": (
             "The Daily Sales ($) data shows a rapidly rising pattern with "
             "stable variability. No anomalies detected. "
-            "Baseline: 55.00 (range: 10.00-100.00)."
+            "Mean: 55.00, Median: 55.00 (range: 10.00-100.00)."
         ),
     },
     # Example 3: JSON output format
@@ -174,7 +174,7 @@ TOOL_USE_EXAMPLES: list[dict[str, Any]] = [
         },
         "expected_output": (
             "The data shows a flat/stationary pattern with stable variability. "
-            "No anomalies detected. Baseline: 1.50 (range: 1.30-1.70)."
+            "No anomalies detected. Mean: 1.50, Median: 1.50 (range: 1.30-1.70)."
         ),
     },
     # Example 5: Crypto-style volatile data
@@ -186,7 +186,7 @@ TOOL_USE_EXAMPLES: list[dict[str, Any]] = [
         "expected_output": (
             "The BTC/USD Hourly data shows a rising pattern with expanding "
             "variability. No anomalies detected but volatility is high. "
-            "Baseline: 42562.50 (range: 38000.00-47000.00)."
+            "Mean: 42562.50, Median: 42750.00 (range: 38000.00-47000.00)."
         ),
     },
 ]

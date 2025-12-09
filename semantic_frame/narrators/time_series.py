@@ -26,7 +26,7 @@ TEMPLATES = {
     "seasonality": " {seasonality} detected.",
     "quality_good": "",  # Don't mention if data quality is good
     "quality_bad": " Data quality is {quality} ({missing:.1f}% missing).",
-    "stats": " Baseline: {median:.2f} (range: {min:.2f}-{max:.2f}).",
+    "stats": " Mean: {mean:.2f}, Median: {median:.2f} (range: {min:.2f}-{max:.2f}).",
 }
 
 
@@ -120,6 +120,7 @@ def generate_time_series_narrative(
     # Statistics summary
     parts.append(
         TEMPLATES["stats"].format(
+            mean=profile.mean,
             median=profile.median,
             min=profile.min_val,
             max=profile.max_val,
