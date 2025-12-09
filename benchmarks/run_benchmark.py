@@ -36,6 +36,7 @@ from pathlib import Path
 
 import numpy as np
 
+from benchmarks.claude_client import BackendType
 from benchmarks.config import BenchmarkConfig, TaskType
 from benchmarks.reporter import BenchmarkReporter
 from benchmarks.runner import BenchmarkRunner
@@ -70,7 +71,20 @@ def main() -> None:
     parser.add_argument(
         "--mock",
         action="store_true",
-        help="Mock mode: no API calls (for testing pipeline)",
+        help="[DEPRECATED: use --backend mock] Mock mode: no API calls",
+    )
+
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=[b.value for b in BackendType],
+        default="api",
+        help=(
+            "Backend for Claude queries: "
+            "'api' (paid Anthropic API), "
+            "'claude-code' (free on Max plan via CLI), "
+            "'mock' (no API calls, for testing). Default: api"
+        ),
     )
 
     parser.add_argument(
@@ -138,15 +152,21 @@ def main() -> None:
 
     config.verbose = not args.quiet
 
-    # Validate API key (unless mock mode)
-    if not args.mock and not config.api_key:
+    # Determine backend (--mock flag takes precedence for backwards compatibility)
+    backend = BackendType(args.backend)
+    if args.mock:
+        backend = BackendType.MOCK
+
+    # Validate API key (only needed for API backend)
+    if backend == BackendType.API and not config.api_key:
         print("Error: ANTHROPIC_API_KEY environment variable not set")
         print("Set it with: export ANTHROPIC_API_KEY='your-key-here'")
-        print("Or use --mock for testing without API calls")
+        print("Or use --backend mock for testing without API calls")
+        print("Or use --backend claude-code for free usage on Max plan")
         sys.exit(1)
 
     # Run benchmarks
-    runner = BenchmarkRunner(config, mock=args.mock)
+    runner = BenchmarkRunner(config, backend=backend)
 
     tasks = None
     if args.task:
@@ -161,10 +181,18 @@ def main() -> None:
     if not args.no_viz:
         features.append(f"viz ({args.viz_backend})")
 
+    # Backend display name
+    backend_display = {
+        BackendType.API: "Anthropic API (paid)",
+        BackendType.CLAUDE_CODE: "Claude Code CLI (free on Max)",
+        BackendType.MOCK: "Mock (no API calls)",
+    }
+
     print("\n" + "=" * 60)
     print("SEMANTIC FRAME BENCHMARK SUITE")
     print("=" * 60)
-    print(f"Mode: {'Quick' if args.quick else 'Full'} {'(Mock)' if args.mock else ''}")
+    print(f"Mode: {'Quick' if args.quick else 'Full'}")
+    print(f"Backend: {backend_display.get(backend, backend.value)}")
     print(f"Trials per condition: {config.n_trials}")
     print(f"Tasks: {[t.value for t in (tasks or list(TaskType))]}")
     if features:

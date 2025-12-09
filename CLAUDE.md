@@ -238,33 +238,33 @@ Current best results (2025-12-09):
 - Token compression: 96.7%
 - Cost savings: 91.3%
 
-### TODO: Claude Code CLI Backend (Dec 2025)
+### Claude Code CLI Backend ✅ COMPLETE (Dec 2025)
 
 **Goal:** Add `--backend claude-code` option to run benchmarks using Claude Code CLI instead of paid API. This enables free iteration during development (Max plan), with final validation through API.
 
-**Tasks:**
-1. Research Claude Code CLI capabilities (Dec 2025 docs):
-   - `claude -p "prompt"` for single queries
-   - `claude --print` for non-interactive mode
-   - Check if parallel/batch requests are supported
-   - Investigate rate limits and throughput
-2. Create `ClaudeCodeClient` class in `benchmarks/claude_client.py`:
-   - Same interface as `ClaudeClient` and `MockClaudeClient`
-   - Subprocess calls to `claude` CLI
-   - Parse stdout for responses
-3. Add `--backend` flag to `run_benchmark.py`:
-   - `api` (default) - uses Anthropic API (paid)
-   - `claude-code` - uses Claude Code CLI (free on Max)
-   - `mock` - existing mock mode (free, fast)
-4. Handle differences:
-   - Sequential vs parallel execution
-   - Response format parsing
-   - Token counting (may differ)
+**Usage:**
+```bash
+# Use Claude Code CLI backend (free on Max plan)
+python -m benchmarks.run_benchmark --backend claude-code
 
-**Resources to check:**
-- https://docs.anthropic.com/claude-code (official docs)
-- Claude Code CLI `--help` output
-- Any batch/parallel execution options added in late 2025
+# Use paid API (default)
+python -m benchmarks.run_benchmark --backend api
+
+# Use mock backend (no API calls, for testing)
+python -m benchmarks.run_benchmark --backend mock
+```
+
+**Implementation Details:**
+- `ClaudeCodeClient` class in `benchmarks/claude_client.py` with same interface as API client
+- Uses `claude -p --output-format json --tools ""` for pure LLM responses
+- Supports retry logic for transient errors (rate limits, timeouts)
+- Model aliases: haiku, sonnet, opus mapped from config
+
+**Rate Limits (Max plans):**
+- Max 5x ($100/mo): 50-200 prompts per 5 hours
+- Max 20x ($200/mo): 200-800 prompts per 5 hours
+
+**Research documented in:** `docs/claude_code_cli_research.md`
 
 ## Framework Integrations
 
