@@ -294,9 +294,9 @@ class BenchmarkReporter:
             ASCII chart string
         """
         lines = []
-        lines.append(f"\n{'='*60}")
+        lines.append(f"\n{'=' * 60}")
         lines.append(f"  {metric.upper()} BY TASK")
-        lines.append(f"{'='*60}")
+        lines.append(f"{'=' * 60}")
 
         task_types = sorted(set(k.split("_")[0] for k in self.aggregated.keys()))
         max_bar_width = 40
@@ -332,7 +332,7 @@ class BenchmarkReporter:
             lines.append(f"  Baseline:  |{baseline_bar:<{max_bar_width}}| {baseline_val:.1%}")
             lines.append(f"  Treatment: |{treatment_bar:<{max_bar_width}}| {treatment_val:.1%}")
 
-        lines.append(f"{'='*60}\n")
+        lines.append(f"{'=' * 60}\n")
         return "\n".join(lines)
 
 
