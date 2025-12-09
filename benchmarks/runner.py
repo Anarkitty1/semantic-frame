@@ -86,9 +86,9 @@ class BenchmarkRunner:
         task = task_class(self.config, self.client)
 
         if self.config.verbose:
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Running {task_type.value} benchmark")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
         start_time = time.perf_counter()
         results = task.run(n_trials=n_trials)

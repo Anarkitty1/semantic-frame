@@ -258,7 +258,7 @@ STATISTICAL_QUERIES = {
 
 TREND_QUERIES = {
     "direction": (
-        "What is the overall trend direction of this time series? " "(rising/falling/flat/cyclical)"
+        "What is the overall trend direction of this time series? (rising/falling/flat/cyclical)"
     ),
     "strength": "How strong is the trend? (strong/moderate/weak/none)",
     "slope": "Approximately what is the slope of the trend (change per unit time)?",
@@ -275,8 +275,7 @@ COMPARATIVE_QUERIES = {
     "higher_mean": "Which series has the higher mean: Series A or Series B?",
     "more_volatile": "Which series is more volatile: Series A or Series B?",
     "correlation": (
-        "Are Series A and Series B positively correlated, "
-        "negatively correlated, or uncorrelated?"
+        "Are Series A and Series B positively correlated, negatively correlated, or uncorrelated?"
     ),
     "stronger_trend": "Which series has a stronger trend: Series A or Series B?",
 }

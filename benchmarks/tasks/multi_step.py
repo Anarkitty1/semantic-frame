@@ -15,8 +15,7 @@ from benchmarks.tasks.base import BaseTask
 
 MULTI_STEP_QUERIES = {
     "forecast": (
-        "If the current trend continues linearly, "
-        "what will the value be after 10 more time steps?"
+        "If the current trend continues linearly, what will the value be after 10 more time steps?"
     ),
     "zscore": "What is the z-score of the maximum value in this dataset?",
     "cv": "What is the coefficient of variation (std/mean) of this dataset?",

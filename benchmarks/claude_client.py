@@ -94,7 +94,7 @@ class ClaudeClient:
             self._client = Anthropic(api_key=self.config.api_key)
         except ImportError:
             raise ImportError(
-                "anthropic package not installed. " "Install with: pip install anthropic"
+                "anthropic package not installed. Install with: pip install anthropic"
             )
 
     def query(
@@ -124,7 +124,7 @@ class ClaudeClient:
                     kwargs["system"] = system
 
                 assert self._client is not None, "Client not initialized"
-                response = self._client.messages.create(**kwargs)
+                response = self._client.messages.create(**kwargs)  # type: ignore[attr-defined]
 
                 latency_ms = (time.perf_counter() - start_time) * 1000
 

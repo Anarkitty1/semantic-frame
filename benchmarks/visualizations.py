@@ -569,7 +569,7 @@ class PlotlyBackend(VisualizationBackend):
     def is_available(self) -> bool:
         """Check if plotly is installed."""
         try:
-            import plotly.graph_objects  # noqa: F401
+            import plotly.graph_objects  # type: ignore[import-untyped]  # noqa: F401
 
             return True
         except ImportError:
@@ -579,8 +579,8 @@ class PlotlyBackend(VisualizationBackend):
         """Lazy import plotly."""
         if self._go is None:
             try:
-                import plotly.express as px
-                import plotly.graph_objects as go
+                import plotly.express as px  # type: ignore[import-untyped]
+                import plotly.graph_objects as go  # type: ignore[import-untyped]
 
                 self._go = go
                 self._px = px
@@ -926,8 +926,7 @@ class BenchmarkVisualizer:
 
         if not backend.is_available():
             raise ImportError(
-                "No visualization backend available. "
-                "Install with: pip install semantic-frame[viz]"
+                "No visualization backend available. Install with: pip install semantic-frame[viz]"
             )
 
         return backend

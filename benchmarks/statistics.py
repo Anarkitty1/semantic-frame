@@ -818,7 +818,7 @@ def format_statistical_report(
             lines.append(f"  Corrected p-value: {result.corrected_p_value:.4f}")
 
         sig_marker = "✓" if result.is_significant else "✗"
-        lines.append(f"  Significant at α={1-result.confidence_level:.2f}: {sig_marker}")
+        lines.append(f"  Significant at α={1 - result.confidence_level:.2f}: {sig_marker}")
 
         if include_effect_sizes and result.effect_size is not None:
             lines.append(f"  Effect size (d): {result.effect_size:.3f}")
