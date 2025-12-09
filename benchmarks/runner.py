@@ -10,7 +10,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from benchmarks.claude_client import get_client
+from benchmarks.claude_client import BackendType, get_client
 from benchmarks.config import BenchmarkConfig, TaskType
 from benchmarks.logging_config import get_logger
 from benchmarks.metrics import AggregatedResults, TrialResult
@@ -50,9 +50,19 @@ class BenchmarkRunner:
         self,
         config: BenchmarkConfig | None = None,
         mock: bool = False,
+        backend: BackendType | str | None = None,
     ):
         self.config = config or BenchmarkConfig()
-        self.client = get_client(self.config, mock=mock)
+
+        # Determine backend: explicit backend param > mock flag > default API
+        if backend is not None:
+            self.client = get_client(self.config, backend=backend)
+        elif mock:
+            # Backwards compatibility: mock=True uses mock backend
+            self.client = get_client(self.config, backend=BackendType.MOCK)
+        else:
+            self.client = get_client(self.config, backend=BackendType.API)
+
         self.results: list[TrialResult] = []
         self.aggregated: dict[str, AggregatedResults] = {}
         self.run_timestamp: datetime | None = None

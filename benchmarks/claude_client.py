@@ -2,16 +2,29 @@
 Claude API Client
 
 Wrapper for Anthropic API calls with retry logic and response parsing.
+Supports multiple backends: API (paid), Claude Code CLI (free on Max), and Mock.
 """
 
 from __future__ import annotations
 
+import json
+import subprocess
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from benchmarks.config import BASELINE_PROMPT_TEMPLATE, TREATMENT_PROMPT_TEMPLATE, BenchmarkConfig
 from benchmarks.metrics import count_tokens, parse_llm_response
+
+
+class BackendType(Enum):
+    """Available backend types for Claude queries."""
+
+    API = "api"  # Anthropic API (paid)
+    CLAUDE_CODE = "claude-code"  # Claude Code CLI (free on Max plan)
+    MOCK = "mock"  # Mock client for testing
+
 
 if TYPE_CHECKING:
     from anthropic import Anthropic
@@ -419,8 +432,310 @@ class MockClaudeClient:
         return self.query(prompt)
 
 
-def get_client(config: BenchmarkConfig, mock: bool = False) -> ClaudeClient | MockClaudeClient:
-    """Get appropriate client based on configuration."""
-    if mock:
+class ClaudeCodeClient:
+    """
+    Client using Claude Code CLI instead of paid API.
+
+    Enables free iteration on Max plans ($100-200/month) with final
+    validation through the API. Uses subprocess calls to the `claude` CLI.
+
+    Requirements:
+        - Claude Code CLI installed and authenticated
+        - Max plan subscription for sufficient quota
+
+    Rate Limits (Max plans):
+        - Max 5x: 50-200 prompts per 5 hours
+        - Max 20x: 200-800 prompts per 5 hours
+    """
+
+    def __init__(self, config: BenchmarkConfig) -> None:
+        self.config = config
+        self._verify_cli_available()
+
+    def _verify_cli_available(self) -> None:
+        """Check that claude CLI is available and working."""
+        try:
+            result = subprocess.run(
+                ["claude", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"claude CLI returned error: {result.stderr or result.stdout}")
+        except FileNotFoundError:
+            raise RuntimeError(
+                "claude CLI not found. Install from: https://claude.ai/code\n"
+                "After installation, run 'claude' to authenticate."
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("claude CLI timed out during version check")
+
+    def _get_model_alias(self) -> str:
+        """Convert model config to CLI alias."""
+        model = self.config.model.model.lower()
+        if "haiku" in model:
+            return "haiku"
+        elif "opus" in model:
+            return "opus"
+        else:
+            return "sonnet"  # Default to sonnet
+
+    def _parse_cli_response(
+        self,
+        result: subprocess.CompletedProcess[str],
+        start_time: float,
+    ) -> ClaudeResponse:
+        """Parse CLI JSON output to ClaudeResponse."""
+        latency_ms = (time.perf_counter() - start_time) * 1000
+
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() if result.stderr else "CLI execution failed"
+            return ClaudeResponse(
+                content="",
+                input_tokens=0,
+                output_tokens=0,
+                latency_ms=latency_ms,
+                model=self.config.model.model,
+                parsed={},
+                error=error_msg,
+            )
+
+        try:
+            data = json.loads(result.stdout)
+
+            # Check for error in response
+            if data.get("is_error", False):
+                return ClaudeResponse(
+                    content="",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=data.get("duration_ms", latency_ms),
+                    model=self.config.model.model,
+                    parsed={},
+                    error=data.get("result", "Unknown CLI error"),
+                )
+
+            # Extract usage info
+            usage = data.get("usage", {})
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+
+            # Get actual model used from modelUsage
+            model_usage = data.get("modelUsage", {})
+            actual_model = self.config.model.model
+            if model_usage:
+                # Get first model from usage (primary model used)
+                actual_model = next(iter(model_usage.keys()), actual_model)
+
+            content = data.get("result", "")
+
+            return ClaudeResponse(
+                content=content,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                latency_ms=data.get("duration_ms", latency_ms),
+                model=actual_model,
+                parsed=parse_llm_response(content),
+            )
+
+        except json.JSONDecodeError as e:
+            return ClaudeResponse(
+                content="",
+                input_tokens=0,
+                output_tokens=0,
+                latency_ms=latency_ms,
+                model=self.config.model.model,
+                parsed={},
+                error=f"Failed to parse CLI JSON response: {e}\nOutput: {result.stdout[:500]}",
+            )
+        except (KeyError, TypeError) as e:
+            return ClaudeResponse(
+                content="",
+                input_tokens=0,
+                output_tokens=0,
+                latency_ms=latency_ms,
+                model=self.config.model.model,
+                parsed={},
+                error=f"Unexpected CLI response structure: {e}",
+            )
+
+    def query(
+        self,
+        prompt: str,
+        system: str | None = None,
+    ) -> ClaudeResponse:
+        """
+        Execute query via Claude Code CLI subprocess.
+
+        Uses --tools "" to disable all tools for pure LLM response,
+        matching API behavior for benchmarking.
+        """
+        cmd = [
+            "claude",
+            "-p",  # Non-interactive print mode
+            "--output-format",
+            "json",
+            "--tools",
+            "",  # Disable all tools for pure LLM response
+            "--max-turns",
+            "1",  # Single turn only
+            "--model",
+            self._get_model_alias(),
+        ]
+
+        if system:
+            cmd.extend(["--system-prompt", system])
+
+        # Calculate timeout in seconds (config is in seconds)
+        timeout_seconds = self.config.model.timeout
+
+        last_error = None
+        for attempt in range(self.config.retry_attempts):
+            try:
+                start_time = time.perf_counter()
+
+                # Pass prompt via stdin to handle special characters safely
+                result = subprocess.run(
+                    cmd,
+                    input=prompt,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds,
+                )
+
+                response = self._parse_cli_response(result, start_time)
+
+                # Check if we got a retryable error
+                if response.error and self._is_retryable_error(response.error):
+                    last_error = response.error
+                    if attempt < self.config.retry_attempts - 1:
+                        delay = self.config.retry_delay * (2**attempt)
+                        print(
+                            f"  CLI error (attempt {attempt + 1}/{self.config.retry_attempts}): "
+                            f"{response.error[:100]}"
+                        )
+                        print(f"    Retrying in {delay:.1f}s...")
+                        time.sleep(delay)
+                        continue
+
+                return response
+
+            except subprocess.TimeoutExpired:
+                last_error = f"CLI timed out after {timeout_seconds}s"
+                if attempt < self.config.retry_attempts - 1:
+                    delay = self.config.retry_delay * (2**attempt)
+                    print(
+                        f"  Timeout (attempt {attempt + 1}/{self.config.retry_attempts}): "
+                        f"{last_error}"
+                    )
+                    print(f"    Retrying in {delay:.1f}s...")
+                    time.sleep(delay)
+                continue
+
+            except OSError as e:
+                # Non-retryable OS error
+                error_msg = f"OS error running CLI: {e}"
+                print(f"ERROR: {error_msg}", flush=True)
+                return ClaudeResponse(
+                    content="",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=0,
+                    model=self.config.model.model,
+                    parsed={},
+                    error=error_msg,
+                )
+
+        # All retries failed
+        error_msg = f"CLI call failed after {self.config.retry_attempts} attempts: {last_error}"
+        print(f"ERROR: {error_msg}", flush=True)
+
+        return ClaudeResponse(
+            content="",
+            input_tokens=0,
+            output_tokens=0,
+            latency_ms=0,
+            model=self.config.model.model,
+            parsed={},
+            error=error_msg,
+        )
+
+    def _is_retryable_error(self, error: str) -> bool:
+        """Check if an error is retryable."""
+        retryable_patterns = [
+            "rate limit",
+            "timeout",
+            "overloaded",
+            "temporarily unavailable",
+            "connection",
+            "network",
+        ]
+        error_lower = error.lower()
+        return any(pattern in error_lower for pattern in retryable_patterns)
+
+    def query_baseline(
+        self,
+        raw_data: str,
+        query: str,
+    ) -> ClaudeResponse:
+        """Query Claude Code CLI with raw data (baseline condition)."""
+        prompt = BASELINE_PROMPT_TEMPLATE.format(
+            data=raw_data,
+            query=query,
+        )
+        return self.query(prompt)
+
+    def query_treatment(
+        self,
+        semantic_frame_output: str,
+        query: str,
+    ) -> ClaudeResponse:
+        """Query Claude Code CLI with Semantic Frame output (treatment condition)."""
+        prompt = TREATMENT_PROMPT_TEMPLATE.format(
+            semantic_frame_output=semantic_frame_output,
+            query=query,
+        )
+        return self.query(prompt)
+
+
+# Type alias for any client type
+ClientType = ClaudeClient | MockClaudeClient | ClaudeCodeClient
+
+
+def get_client(
+    config: BenchmarkConfig,
+    backend: BackendType | str = BackendType.API,
+) -> ClientType:
+    """
+    Get appropriate client based on backend configuration.
+
+    Args:
+        config: Benchmark configuration
+        backend: Backend type - "api", "claude-code", or "mock"
+                 (or BackendType enum)
+
+    Returns:
+        Client instance for the specified backend
+
+    Examples:
+        >>> client = get_client(config, "mock")  # For testing
+        >>> client = get_client(config, "claude-code")  # Free on Max plan
+        >>> client = get_client(config, "api")  # Paid API
+    """
+    # Convert string to enum if needed
+    if isinstance(backend, str):
+        try:
+            backend = BackendType(backend.lower())
+        except ValueError:
+            valid = [b.value for b in BackendType]
+            raise ValueError(f"Invalid backend '{backend}'. Must be one of: {valid}")
+
+    if backend == BackendType.MOCK:
         return MockClaudeClient(config)
-    return ClaudeClient(config)
+    elif backend == BackendType.CLAUDE_CODE:
+        return ClaudeCodeClient(config)
+    elif backend == BackendType.API:
+        return ClaudeClient(config)
+    else:
+        raise ValueError(f"Unknown backend type: {backend}")
