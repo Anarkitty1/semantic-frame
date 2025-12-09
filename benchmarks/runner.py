@@ -10,7 +10,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from benchmarks.claude_client import BackendType, ClientType, get_client
+from benchmarks.claude_client import BackendType, ClaudeCodeClient, ClientType, get_client
 from benchmarks.config import BenchmarkConfig, TaskType
 from benchmarks.logging_config import get_logger
 from benchmarks.metrics import AggregatedResults, TrialResult
@@ -110,6 +110,16 @@ class BenchmarkRunner:
         Returns aggregated results for each task and condition.
         """
         self.run_timestamp = datetime.now()
+
+        # Warmup CLI backend to trigger cache creation before benchmarks
+        if isinstance(self.client, ClaudeCodeClient):
+            if self.config.verbose:
+                print("Warming up Claude Code CLI (first call triggers cache creation)...")
+            if self.client.warmup():
+                if self.config.verbose:
+                    print("CLI cache warmed up successfully\n")
+            else:
+                print("WARNING: CLI warmup failed, first queries may be slow\n")
 
         if tasks is None:
             tasks = list(TaskType)

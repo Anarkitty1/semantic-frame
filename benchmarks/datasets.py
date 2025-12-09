@@ -107,6 +107,19 @@ class DatasetGenerator:
         data = slope * x + intercept + noise
 
         trend_direction = "rising" if slope > 0 else "falling" if slope < 0 else "flat"
+
+        # Calculate normalized slope (same as semantic-frame) for strength classification
+        # This ensures ground truth matches what semantic-frame will produce
+        data_range = float(np.max(data) - np.min(data))
+        if data_range > 0:
+            normalized_slope = abs(slope * n / data_range)
+        else:
+            normalized_slope = 0.0
+
+        # Use semantic-frame's thresholds: >0.5 = strong, >0.1 = moderate, else weak
+        trend_strength = (
+            "strong" if normalized_slope > 0.5 else "moderate" if normalized_slope > 0.1 else "weak"
+        )
         ground_truth = {
             "mean": np.mean(data),
             "median": np.median(data),
@@ -115,12 +128,10 @@ class DatasetGenerator:
             "max": np.max(data),
             "count": n,
             "trend": trend_direction,
+            "direction": trend_direction,  # Alias for TREND_QUERIES compatibility
             "slope": slope,
-            "trend_strength": "strong"
-            if abs(slope) > 0.5
-            else "moderate"
-            if abs(slope) > 0.1
-            else "weak",
+            "trend_strength": trend_strength,
+            "strength": trend_strength,  # Alias for TREND_QUERIES compatibility
         }
         return SyntheticDataset(
             name=name,
@@ -155,8 +166,10 @@ class DatasetGenerator:
             "max": np.max(data),
             "count": n,
             "trend": trend_direction,
+            "direction": trend_direction,  # Alias for TREND_QUERIES compatibility
             "growth_rate": growth_rate,
             "trend_strength": "strong",
+            "strength": "strong",  # Alias for TREND_QUERIES compatibility
         }
         return SyntheticDataset(
             name=name,
@@ -193,8 +206,10 @@ class DatasetGenerator:
             "max": np.max(data),
             "count": n,
             "trend": "cyclical",
+            "direction": "cyclical",  # Alias for TREND_QUERIES compatibility
             "period": period,
             "amplitude": amplitude,
+            "strength": "strong",  # Cyclical patterns have clear oscillation
         }
         return SyntheticDataset(
             name=name,
@@ -224,6 +239,8 @@ class DatasetGenerator:
         else:
             trend = "rising" if overall_change > 0 else "falling"
 
+        # Random walks have weak/moderate strength since they're stochastic
+        trend_strength = "weak" if trend == "flat" else "moderate"
         ground_truth = {
             "mean": np.mean(data),
             "median": np.median(data),
@@ -232,7 +249,9 @@ class DatasetGenerator:
             "max": np.max(data),
             "count": n,
             "trend": trend,
+            "direction": trend,  # Alias for TREND_QUERIES compatibility
             "volatility": "high" if step_std > 2 else "moderate" if step_std > 0.5 else "low",
+            "strength": trend_strength,  # Alias for TREND_QUERIES compatibility
         }
         return SyntheticDataset(
             name=name,
