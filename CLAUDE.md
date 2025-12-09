@@ -228,6 +228,16 @@ benchmarks/
 - Hallucination rate: <2% maximum
 - Accuracy targets vary by task (see `MetricThresholds`)
 
+### Tracking Results
+
+Benchmark history is tracked in `benchmarks/BENCHMARK_HISTORY.md`. Update this file after significant changes to record milestone results and catch regressions.
+
+Current best results (2025-12-09):
+- Accuracy: Treatment outperforms baseline by +2.3%
+- Hallucination: 2.3% (treatment) vs 4.5% (baseline)
+- Token compression: 96.7%
+- Cost savings: 91.3%
+
 ## Framework Integrations
 
 Optional dependencies for agent frameworks:
