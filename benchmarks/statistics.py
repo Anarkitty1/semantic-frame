@@ -23,6 +23,7 @@ References:
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -150,7 +151,14 @@ class StatisticalAnalyzer:
             raise ValueError(f"Need at least 2 samples for t-test, got {len(baseline_arr)}")
 
         # Perform paired t-test
-        t_stat, p_value = stats.ttest_rel(treatment_arr, baseline_arr, alternative=alternative)
+        # Suppress scipy warnings about precision loss from nearly identical data
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Precision loss occurred in moment calculation",
+                category=RuntimeWarning,
+            )
+            t_stat, p_value = stats.ttest_rel(treatment_arr, baseline_arr, alternative=alternative)
 
         # Calculate degrees of freedom
         df = len(baseline_arr) - 1

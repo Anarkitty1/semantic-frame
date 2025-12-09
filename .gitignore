@@ -26,3 +26,27 @@ cortex.md
 Idea.md
 COMMANDS.md
 coverage.json
+
+# Benchmark external datasets (downloaded third-party data)
+benchmarks/data/
+
+# Benchmark generated results (regenerated on each run)
+benchmarks/results/benchmark_results.json
+benchmarks/results/benchmark_results.csv
+benchmarks/results/benchmark_report.md
+benchmarks/results/nab_summary.json
+benchmarks/results/robustness_results.json
+benchmarks/results/visualizations/
+
+# Environment and secrets
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# Temporary/draft files
+notes/
+pr.md
+compass_artifact_*.md
+semantic_frame_benchmark_methodology.md
