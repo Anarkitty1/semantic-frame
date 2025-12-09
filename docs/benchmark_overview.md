@@ -239,20 +239,21 @@ Bonferroni-corrected p-values for 6 comparisons: all p < 0.008
 
 ---
 
-## API Modes: Real vs Mock
+## API Modes: Backend Options
 
-### Two Client Implementations
+### Three Backend Implementations
 
-| Client | Usage | Purpose |
-|--------|-------|---------|
-| **ClaudeClient** | Default | Real Anthropic API calls |
-| **MockClaudeClient** | `--mock` flag | Test pipeline without API costs |
+| Backend | Flag | Purpose | Cost |
+|---------|------|---------|------|
+| **API** | `--backend api` (default) | Real Anthropic API calls | Pay per token |
+| **Claude Code CLI** | `--backend claude-code` | Claude Code CLI subprocess | Free (Max plan) |
+| **Mock** | `--backend mock` | Test pipeline without API | Free |
 
-### Real API Mode (Default)
+### API Backend (Default)
 
 ```bash
 export ANTHROPIC_API_KEY='sk-ant-...'
-python -m benchmarks.run_benchmark
+python -m benchmarks.run_benchmark --backend api
 ```
 
 - Uses actual Anthropic API
@@ -261,10 +262,34 @@ python -m benchmarks.run_benchmark
 - Records real latency, token counts, and costs
 - **Produces actual evidence for claims**
 
-### Mock Mode (Development/Testing)
+### Claude Code CLI Backend (Free on Max Plan)
 
 ```bash
-python -m benchmarks.run_benchmark --mock
+python -m benchmarks.run_benchmark --backend claude-code
+```
+
+The ClaudeCodeClient uses Claude Code CLI:
+- Runs `claude -p` subprocess with JSON output
+- **Free on Max plans** (50-800 prompts per 5 hours depending on tier)
+- Ideal for development iteration before final API run
+- Same accuracy as API, just different billing
+- Supports model selection: haiku, sonnet, opus
+
+**Quick test with Claude Code CLI:**
+```bash
+python -m benchmarks.run_benchmark --backend claude-code --task statistical --trials 1
+```
+
+**Rate Limits (Max plans):**
+| Plan | Prompts per 5 hours |
+|------|---------------------|
+| Max 5x ($100/mo) | 50-200 |
+| Max 20x ($200/mo) | 200-800 |
+
+### Mock Backend (Development/Testing)
+
+```bash
+python -m benchmarks.run_benchmark --backend mock
 ```
 
 The MockClaudeClient is **smart**:
@@ -275,14 +300,16 @@ The MockClaudeClient is **smart**:
 - Generates realistic responses
 - Useful for pipeline testing, CI/CD, debugging
 
-### Client Selection Logic
+### Backend Selection Logic
 
 ```python
-# benchmarks/claude_client.py:430-434
-def get_client(config, mock=False):
-    if mock:
-        return MockClaudeClient(config)  # Simulated responses
-    return ClaudeClient(config)          # Real API calls
+# benchmarks/claude_client.py
+from benchmarks.claude_client import BackendType, get_client
+
+# Select backend
+client = get_client(config, backend=BackendType.API)          # Paid API
+client = get_client(config, backend=BackendType.CLAUDE_CODE)  # Free CLI
+client = get_client(config, backend=BackendType.MOCK)         # Mock
 ```
 
 ---
@@ -329,6 +356,7 @@ def get_client(config, mock=False):
 
 | Option | Savings | Notes |
 |--------|---------|-------|
+| **Claude Code CLI** | 100% | Free on Max plans, ideal for iteration |
 | **Batch API** | 50% | Async processing, ~$165-175 for full |
 | **Prompt Caching** | Up to 90% | On repeated content, ~$50-80 |
 | **Use Haiku** | ~90% | $0.25/$1.25 per MTok, ~$25-30 |
@@ -337,9 +365,10 @@ def get_client(config, mock=False):
 
 | Phase | Mode | Cost | Purpose |
 |-------|------|------|---------|
-| **Development** | `--mock` | $0 | Test pipeline |
-| **Validation** | `--quick` | ~$55 | Verify real API works |
-| **Final Evidence** | Full | ~$330 | Publication-quality results |
+| **Development** | `--backend mock` | $0 | Test pipeline |
+| **Iteration** | `--backend claude-code` | $0 | Real responses, free on Max plan |
+| **Validation** | `--backend api --quick` | ~$55 | Verify paid API works |
+| **Final Evidence** | `--backend api` (full) | ~$330 | Publication-quality results |
 
 ---
 
@@ -438,12 +467,13 @@ Runs one task type, one trial, both conditions - full end-to-end with real API.
 | Step | Command | Cost | Validates |
 |------|---------|------|-----------|
 | **1** | `uv run pytest tests/test_benchmark*.py -v` | $0 | All components |
-| **2** | `python -m benchmarks.run_benchmark --mock --format all` | $0 | Full pipeline |
-| **3** | Single API call test (above) | ~$0.05 | API credentials |
-| **4** | `--task statistical --trials 1` | ~$2-5 | Real end-to-end |
-| **5** | `--quick` (if step 4 works) | ~$55 | Statistical validity |
+| **2** | `python -m benchmarks.run_benchmark --backend mock --format all` | $0 | Full pipeline |
+| **3** | `python -m benchmarks.run_benchmark --backend claude-code --task statistical --trials 1` | $0 | Claude Code CLI |
+| **4** | `python -m benchmarks.run_benchmark --backend api --task statistical --trials 1` | ~$2-5 | Paid API |
+| **5** | `--backend api --quick` (if step 4 works) | ~$55 | Statistical validity |
 
 **If steps 1-4 all pass, you can be confident the $55 quick run will work.**
+**For Max plan users:** Steps 1-3 are free; use `--backend claude-code` for extensive iteration before committing to paid API.
 
 ---
 
@@ -451,17 +481,20 @@ Runs one task type, one trial, both conditions - full end-to-end with real API.
 
 ```bash
 # Development - test pipeline (free)
-python -m benchmarks.run_benchmark --mock
+python -m benchmarks.run_benchmark --backend mock
 
-# Quick validation with real API (~$55)
+# Iteration with Claude Code CLI (free on Max plan)
+python -m benchmarks.run_benchmark --backend claude-code --task statistical --trials 1
+
+# Quick validation with paid API (~$55)
 export ANTHROPIC_API_KEY='sk-ant-...'
-python -m benchmarks.run_benchmark --quick
+python -m benchmarks.run_benchmark --backend api --quick
 
 # Full benchmark for publication (~$330)
-python -m benchmarks.run_benchmark --format all
+python -m benchmarks.run_benchmark --backend api --format all
 
 # Single task only
-python -m benchmarks.run_benchmark --task statistical --quick
+python -m benchmarks.run_benchmark --backend api --task statistical --quick
 ```
 
 ### Advanced Features
@@ -496,10 +529,11 @@ pip install semantic-frame[benchmarks]
 ### CLI Options
 
 ```
+--backend BACKEND        Backend: api (default), claude-code, mock
 --task TASK              Run specific task (statistical, trend, anomaly, etc.)
 --quick                  Quick mode: fewer trials, smaller datasets
 --trials N               Override number of trials (default: 30, quick: 5)
---mock                   Mock mode: no API calls
+--mock                   [DEPRECATED] Use --backend mock instead
 --output DIR             Output directory for results
 --format FORMAT          Output format: json, csv, markdown, all
 --quiet                  Suppress progress output
@@ -542,6 +576,7 @@ Results are saved to `benchmarks/results/`:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | December 2025 | Initial document |
+| 1.1 | December 2025 | Added Claude Code CLI backend documentation |
 
 ---
 
