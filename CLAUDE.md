@@ -238,6 +238,34 @@ Current best results (2025-12-09):
 - Token compression: 96.7%
 - Cost savings: 91.3%
 
+### TODO: Claude Code CLI Backend (Dec 2025)
+
+**Goal:** Add `--backend claude-code` option to run benchmarks using Claude Code CLI instead of paid API. This enables free iteration during development (Max plan), with final validation through API.
+
+**Tasks:**
+1. Research Claude Code CLI capabilities (Dec 2025 docs):
+   - `claude -p "prompt"` for single queries
+   - `claude --print` for non-interactive mode
+   - Check if parallel/batch requests are supported
+   - Investigate rate limits and throughput
+2. Create `ClaudeCodeClient` class in `benchmarks/claude_client.py`:
+   - Same interface as `ClaudeClient` and `MockClaudeClient`
+   - Subprocess calls to `claude` CLI
+   - Parse stdout for responses
+3. Add `--backend` flag to `run_benchmark.py`:
+   - `api` (default) - uses Anthropic API (paid)
+   - `claude-code` - uses Claude Code CLI (free on Max)
+   - `mock` - existing mock mode (free, fast)
+4. Handle differences:
+   - Sequential vs parallel execution
+   - Response format parsing
+   - Token counting (may differ)
+
+**Resources to check:**
+- https://docs.anthropic.com/claude-code (official docs)
+- Claude Code CLI `--help` output
+- Any batch/parallel execution options added in late 2025
+
 ## Framework Integrations
 
 Optional dependencies for agent frameworks:
