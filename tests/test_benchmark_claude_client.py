@@ -6,17 +6,30 @@ Tests Claude API client wrapper and mock client for testing.
 from unittest import mock
 
 import pytest
-from anthropic import APIConnectionError, APITimeoutError
+
+# Conditional import for optional anthropic dependency
+try:
+    from anthropic import APIConnectionError, APITimeoutError
+
+    anthropic_available = True
+except ImportError:
+    anthropic_available = False
+    # Create placeholder classes for type hints when anthropic not installed
+    APIConnectionError = Exception  # type: ignore[misc, assignment]
+    APITimeoutError = Exception  # type: ignore[misc, assignment]
 
 from benchmarks.claude_client import (
     BackendType,
-    ClaudeClient,
     ClaudeCodeClient,
     ClaudeResponse,
     MockClaudeClient,
     get_client,
 )
 from benchmarks.config import BenchmarkConfig
+
+# Conditionally import ClaudeClient which requires anthropic
+if anthropic_available:
+    from benchmarks.claude_client import ClaudeClient
 
 
 class TestClaudeResponse:
@@ -54,6 +67,7 @@ class TestClaudeResponse:
         assert response.error == "API rate limit exceeded"
 
 
+@pytest.mark.skipif(not anthropic_available, reason="anthropic not installed")
 class TestClaudeClient:
     """Tests for ClaudeClient class."""
 
@@ -391,10 +405,12 @@ class TestClaudeCodeClient:
             with pytest.raises(RuntimeError, match="claude CLI not found"):
                 ClaudeCodeClient(config)
 
-    def test_get_model_alias_haiku(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_get_model_alias_haiku(self, mock_run: mock.Mock) -> None:
         """Test model alias extraction for haiku."""
         from benchmarks.config import ModelConfig
 
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(
             random_seed=42, model=ModelConfig(model="claude-haiku-4-5-20251001")
         )
@@ -402,10 +418,12 @@ class TestClaudeCodeClient:
 
         assert client._get_model_alias() == "haiku"
 
-    def test_get_model_alias_opus(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_get_model_alias_opus(self, mock_run: mock.Mock) -> None:
         """Test model alias extraction for opus."""
         from benchmarks.config import ModelConfig
 
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(
             random_seed=42, model=ModelConfig(model="claude-opus-4-5-20251101")
         )
@@ -413,10 +431,12 @@ class TestClaudeCodeClient:
 
         assert client._get_model_alias() == "opus"
 
-    def test_get_model_alias_sonnet(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_get_model_alias_sonnet(self, mock_run: mock.Mock) -> None:
         """Test model alias extraction for sonnet (default)."""
         from benchmarks.config import ModelConfig
 
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(
             random_seed=42, model=ModelConfig(model="claude-sonnet-4-20250514")
         )
@@ -424,8 +444,10 @@ class TestClaudeCodeClient:
 
         assert client._get_model_alias() == "sonnet"
 
-    def test_parse_cli_response_success(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_parse_cli_response_success(self, mock_run: mock.Mock) -> None:
         """Test parsing successful CLI JSON response."""
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(random_seed=42)
         client = ClaudeCodeClient(config)
 
@@ -450,8 +472,10 @@ class TestClaudeCodeClient:
         assert response.latency_ms == 1500
         assert response.error is None
 
-    def test_parse_cli_response_error(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_parse_cli_response_error(self, mock_run: mock.Mock) -> None:
         """Test parsing CLI error response."""
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(random_seed=42)
         client = ClaudeCodeClient(config)
 
@@ -465,8 +489,10 @@ class TestClaudeCodeClient:
         assert response.content == ""
         assert response.error == "CLI error occurred"
 
-    def test_parse_cli_response_is_error_true(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_parse_cli_response_is_error_true(self, mock_run: mock.Mock) -> None:
         """Test parsing CLI response with is_error=true."""
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(random_seed=42)
         client = ClaudeCodeClient(config)
 
@@ -484,8 +510,10 @@ class TestClaudeCodeClient:
 
         assert response.error == "Rate limit exceeded"
 
-    def test_parse_cli_response_invalid_json(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_parse_cli_response_invalid_json(self, mock_run: mock.Mock) -> None:
         """Test parsing invalid JSON response."""
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(random_seed=42)
         client = ClaudeCodeClient(config)
 
@@ -499,8 +527,10 @@ class TestClaudeCodeClient:
         assert response.error is not None
         assert "Failed to parse CLI JSON" in response.error
 
-    def test_is_retryable_error(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_is_retryable_error(self, mock_run: mock.Mock) -> None:
         """Test retryable error detection."""
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(random_seed=42)
         client = ClaudeCodeClient(config)
 
@@ -725,13 +755,16 @@ class TestGetClient:
 
         assert isinstance(client, MockClaudeClient)
 
-    def test_get_client_claude_code_backend(self) -> None:
+    @mock.patch("subprocess.run")
+    def test_get_client_claude_code_backend(self, mock_run: mock.Mock) -> None:
         """Test get_client returns ClaudeCodeClient with claude-code backend."""
+        mock_run.return_value = mock.Mock(returncode=0, stdout="1.0.0", stderr="")
         config = BenchmarkConfig(random_seed=42)
         client = get_client(config, backend="claude-code")
 
         assert isinstance(client, ClaudeCodeClient)
 
+    @pytest.mark.skipif(not anthropic_available, reason="anthropic not installed")
     @mock.patch("anthropic.Anthropic")
     def test_get_client_api_backend(self, mock_anthropic: mock.Mock) -> None:
         """Test get_client returns ClaudeClient with api backend."""
@@ -747,6 +780,7 @@ class TestGetClient:
         with pytest.raises(ValueError, match="Invalid backend"):
             get_client(config, backend="invalid")
 
+    @pytest.mark.skipif(not anthropic_available, reason="anthropic not installed")
     def test_get_client_default_api(self) -> None:
         """Test get_client defaults to API backend."""
         config = BenchmarkConfig(api_key=None)
