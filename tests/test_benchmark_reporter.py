@@ -484,3 +484,355 @@ class TestPrintComparisonTable:
         assert "Token Compression" in captured.out
         assert "Baseline" in captured.out
         assert "Treatment" in captured.out
+
+
+class TestGenerateAsciiChart:
+    """Tests for generate_ascii_chart method."""
+
+    def test_returns_string(self) -> None:
+        """Test method returns a string."""
+        results = create_sample_aggregated_results()
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        chart = reporter.generate_ascii_chart()
+
+        assert isinstance(chart, str)
+        assert len(chart) > 0
+
+    def test_contains_task_labels(self) -> None:
+        """Test chart contains task labels."""
+        results = create_sample_aggregated_results()
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        chart = reporter.generate_ascii_chart()
+
+        assert "STATISTICAL" in chart
+        assert "TREND" in chart
+
+    def test_contains_baseline_treatment_labels(self) -> None:
+        """Test chart contains baseline and treatment labels."""
+        results = create_sample_aggregated_results()
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        chart = reporter.generate_ascii_chart()
+
+        assert "Baseline:" in chart
+        assert "Treatment:" in chart
+
+    def test_accuracy_metric(self) -> None:
+        """Test chart with accuracy metric (default)."""
+        results = create_sample_aggregated_results()
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        chart = reporter.generate_ascii_chart(metric="accuracy")
+
+        assert "ACCURACY BY TASK" in chart
+        # Check for percentage values
+        assert "%" in chart
+
+    def test_compression_ratio_metric(self) -> None:
+        """Test chart with compression_ratio metric."""
+        results = create_sample_aggregated_results()
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        chart = reporter.generate_ascii_chart(metric="compression_ratio")
+
+        assert "COMPRESSION_RATIO BY TASK" in chart
+
+    def test_hallucination_rate_metric(self) -> None:
+        """Test chart with hallucination_rate metric."""
+        results = create_sample_aggregated_results()
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        chart = reporter.generate_ascii_chart(metric="hallucination_rate")
+
+        assert "HALLUCINATION_RATE BY TASK" in chart
+
+    def test_unknown_metric_skips_silently(self) -> None:
+        """Test that unknown metrics are skipped."""
+        results = create_sample_aggregated_results()
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        chart = reporter.generate_ascii_chart(metric="unknown_metric")
+
+        # Should return a chart but without task data
+        assert isinstance(chart, str)
+
+    def test_missing_task_results_skipped(self) -> None:
+        """Test that tasks with missing baseline or treatment are skipped."""
+        # Only provide treatment, no baseline
+        results = {
+            "statistical_treatment": create_sample_aggregated_results()["statistical_treatment"]
+        }
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        chart = reporter.generate_ascii_chart()
+
+        # Should not crash, returns chart
+        assert isinstance(chart, str)
+
+
+class TestMarkdownReportEdgeCases:
+    """Test edge cases for markdown report generation."""
+
+    def test_skips_task_without_baseline(self) -> None:
+        """Test that tasks without baseline are skipped in per-task section."""
+        # Only provide treatment
+        results = {
+            "statistical_treatment": create_sample_aggregated_results()["statistical_treatment"]
+        }
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        report = reporter.generate_markdown_report()
+
+        # Should not crash and should contain basic sections
+        assert "Executive Summary" in report
+        assert "Methodology" in report
+
+    def test_skips_task_without_treatment(self) -> None:
+        """Test that tasks without treatment are skipped in per-task section."""
+        # Only provide baseline
+        results = {
+            "statistical_baseline": create_sample_aggregated_results()["statistical_baseline"]
+        }
+        config = BenchmarkConfig.quick_mode()
+        reporter = BenchmarkReporter(results, config)
+
+        report = reporter.generate_markdown_report()
+
+        # Should not crash
+        assert "Executive Summary" in report
+
+
+class TestCompareBenchmarkResults:
+    """Tests for compare_benchmark_results function."""
+
+    def test_table_format(self, tmp_path: Path) -> None:
+        """Test comparison with table format."""
+        from benchmarks.reporter import compare_benchmark_results
+
+        # Create test result files
+        result1 = self._create_result_file(tmp_path / "run1.json", accuracy=0.85)
+        result2 = self._create_result_file(tmp_path / "run2.json", accuracy=0.90)
+
+        output = compare_benchmark_results([result1, result2], output_format="table")
+
+        assert "BENCHMARK COMPARISON" in output
+        assert "run1" in output
+        assert "run2" in output
+
+    def test_csv_format(self, tmp_path: Path) -> None:
+        """Test comparison with CSV format."""
+        from benchmarks.reporter import compare_benchmark_results
+
+        result1 = self._create_result_file(tmp_path / "run1.json", accuracy=0.85)
+        result2 = self._create_result_file(tmp_path / "run2.json", accuracy=0.90)
+
+        output = compare_benchmark_results([result1, result2], output_format="csv")
+
+        assert "metric" in output
+        assert "run1" in output
+        assert "run2" in output
+        assert "accuracy" in output
+
+    def test_json_format(self, tmp_path: Path) -> None:
+        """Test comparison with JSON format."""
+        from benchmarks.reporter import compare_benchmark_results
+
+        result1 = self._create_result_file(tmp_path / "run1.json", accuracy=0.85)
+        result2 = self._create_result_file(tmp_path / "run2.json", accuracy=0.90)
+
+        output = compare_benchmark_results([result1, result2], output_format="json")
+
+        data = json.loads(output)
+        assert "runs" in data
+        assert len(data["runs"]) == 2
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        """Test error when result file not found."""
+        import pytest
+
+        from benchmarks.reporter import compare_benchmark_results
+
+        with pytest.raises(FileNotFoundError, match="Result file not found"):
+            compare_benchmark_results([tmp_path / "nonexistent.json"])
+
+    def test_unknown_format(self, tmp_path: Path) -> None:
+        """Test error with unknown output format."""
+        import pytest
+
+        from benchmarks.reporter import compare_benchmark_results
+
+        result1 = self._create_result_file(tmp_path / "run1.json", accuracy=0.85)
+
+        with pytest.raises(ValueError, match="Unknown output format"):
+            compare_benchmark_results([result1], output_format="invalid")
+
+    def test_empty_results(self, tmp_path: Path) -> None:
+        """Test with no result files."""
+        from benchmarks.reporter import compare_benchmark_results
+
+        output = compare_benchmark_results([], output_format="table")
+
+        assert "No results to compare" in output
+
+    def _create_result_file(self, path: Path, accuracy: float = 0.85) -> Path:
+        """Create a test result file."""
+        data = {
+            "metadata": {"model": "claude-3-haiku", "generated": "2024-01-01"},
+            "aggregated_results": {
+                "statistical_treatment": {
+                    "task_type": "statistical",
+                    "condition": "treatment",
+                    "n_trials": 10,
+                    "accuracy": accuracy,
+                    "mean_compression_ratio": 0.92,
+                    "hallucination_rate": 0.02,
+                }
+            },
+        }
+        with open(path, "w") as f:
+            json.dump(data, f)
+        return path
+
+
+class TestGetWeightedMetric:
+    """Tests for _get_weighted_metric helper function."""
+
+    def test_returns_weighted_average(self) -> None:
+        """Test that metric is weighted by trial count."""
+        from benchmarks.reporter import _get_weighted_metric
+
+        data = {
+            "aggregated_results": {
+                "task1_treatment": {"n_trials": 10, "accuracy": 0.80},
+                "task2_treatment": {"n_trials": 30, "accuracy": 0.90},
+            }
+        }
+
+        result = _get_weighted_metric(data, "accuracy", "treatment")
+
+        # (10*0.80 + 30*0.90) / 40 = (8 + 27) / 40 = 0.875
+        assert result == 0.875
+
+    def test_empty_aggregated_results(self) -> None:
+        """Test with empty aggregated_results."""
+        from benchmarks.reporter import _get_weighted_metric
+
+        data: dict = {"aggregated_results": {}}
+
+        result = _get_weighted_metric(data, "accuracy", "treatment")
+
+        assert result is None
+
+    def test_no_aggregated_results_key(self) -> None:
+        """Test with missing aggregated_results key."""
+        from benchmarks.reporter import _get_weighted_metric
+
+        data: dict = {}
+
+        result = _get_weighted_metric(data, "accuracy", "treatment")
+
+        assert result is None
+
+    def test_zero_trials(self) -> None:
+        """Test when total trials is zero."""
+        from benchmarks.reporter import _get_weighted_metric
+
+        data = {
+            "aggregated_results": {
+                "task1_treatment": {"n_trials": 0, "accuracy": 0.80},
+            }
+        }
+
+        result = _get_weighted_metric(data, "accuracy", "treatment")
+
+        assert result is None
+
+    def test_filters_by_condition(self) -> None:
+        """Test that only matching conditions are included."""
+        from benchmarks.reporter import _get_weighted_metric
+
+        data = {
+            "aggregated_results": {
+                "task1_baseline": {"n_trials": 10, "accuracy": 0.70},
+                "task1_treatment": {"n_trials": 10, "accuracy": 0.90},
+            }
+        }
+
+        baseline_result = _get_weighted_metric(data, "accuracy", "baseline")
+        treatment_result = _get_weighted_metric(data, "accuracy", "treatment")
+
+        assert baseline_result == 0.70
+        assert treatment_result == 0.90
+
+
+class TestBuildComparisonData:
+    """Tests for _build_comparison_data helper function."""
+
+    def test_returns_runs_list(self, tmp_path: Path) -> None:
+        """Test that function returns list of runs."""
+        from benchmarks.reporter import _build_comparison_data
+
+        results = [
+            (
+                "run1",
+                {
+                    "metadata": {"model": "haiku"},
+                    "aggregated_results": {
+                        "task_treatment": {
+                            "n_trials": 10,
+                            "accuracy": 0.85,
+                            "mean_compression_ratio": 0.9,
+                            "hallucination_rate": 0.02,
+                        }
+                    },
+                },
+            ),
+        ]
+
+        data = _build_comparison_data(results)
+
+        assert "runs" in data
+        assert len(data["runs"]) == 1
+        assert data["runs"][0]["name"] == "run1"
+        assert data["runs"][0]["accuracy"] == 0.85
+
+
+class TestFormatComparisonCSV:
+    """Tests for _format_comparison_csv helper function."""
+
+    def test_returns_csv_string(self) -> None:
+        """Test that function returns valid CSV."""
+        from benchmarks.reporter import _format_comparison_csv
+
+        results = [
+            (
+                "run1",
+                {
+                    "aggregated_results": {
+                        "task_treatment": {
+                            "n_trials": 10,
+                            "accuracy": 0.85,
+                            "mean_compression_ratio": 0.9,
+                            "hallucination_rate": 0.02,
+                        }
+                    },
+                },
+            ),
+        ]
+
+        csv_output = _format_comparison_csv(results)
+
+        assert "metric,run1" in csv_output
+        assert "accuracy" in csv_output
+        assert "0.85" in csv_output

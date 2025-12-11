@@ -569,3 +569,265 @@ class TestIntegration:
             # Synthetic conversion should preserve data
             synthetic = dataset.to_synthetic_dataset()
             assert np.array_equal(synthetic.data, dataset.data)
+
+
+# ============================================================================
+# Download and Checksum Tests
+# ============================================================================
+
+
+class TestNABLoaderDownload:
+    """Tests for NABLoader download and checksum functionality."""
+
+    def test_download_already_exists(
+        self, nab_fixture_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test download skips when data already exists."""
+        import logging
+
+        config = ExternalDataConfig(data_cache_dir=nab_fixture_dir.parent)
+        loader = NABLoader(config)
+
+        with caplog.at_level(logging.INFO):
+            loader.download(nab_fixture_dir)
+
+        assert "already downloaded" in caplog.text
+
+    def test_verify_checksum_mismatch(
+        self, temp_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test checksum verification logs warning on mismatch."""
+        import logging
+
+        config = ExternalDataConfig(data_cache_dir=temp_dir)
+        loader = NABLoader(config)
+
+        # Create a test file
+        test_file = temp_dir / "test.txt"
+        test_file.write_text("test content")
+
+        # Use wrong checksum
+        wrong_checksum = "0" * 64
+
+        with caplog.at_level(logging.WARNING):
+            result = loader._verify_checksum(test_file, wrong_checksum, "test file")
+
+        assert result is False
+        assert "Checksum mismatch" in caplog.text
+
+    def test_verify_checksum_match(self, temp_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
+        """Test checksum verification returns True on match."""
+        import hashlib
+        import logging
+
+        config = ExternalDataConfig(data_cache_dir=temp_dir)
+        loader = NABLoader(config)
+
+        # Create a test file
+        test_file = temp_dir / "test.txt"
+        test_file.write_text("test content")
+
+        # Compute correct checksum
+        correct_checksum = hashlib.sha256(b"test content").hexdigest()
+
+        with caplog.at_level(logging.INFO):
+            result = loader._verify_checksum(test_file, correct_checksum, "test file")
+
+        assert result is True
+        assert "Checksum verified" in caplog.text
+
+    def test_compute_file_checksum_static(self, temp_dir: Path) -> None:
+        """Test static compute_file_checksum method."""
+        test_file = temp_dir / "test.txt"
+        test_file.write_text("Hello, World!")
+
+        checksum = NABLoader.compute_file_checksum(test_file)
+
+        # Known SHA-256 for "Hello, World!"
+        import hashlib
+
+        expected = hashlib.sha256(b"Hello, World!").hexdigest()
+        assert checksum == expected
+
+
+class TestNABLoaderEdgeCases:
+    """Tests for NABLoader edge cases and error handling."""
+
+    def test_parse_timestamp_invalid(self, temp_dir: Path) -> None:
+        """Test parsing invalid timestamp raises ValueError."""
+        config = ExternalDataConfig(data_cache_dir=temp_dir)
+        loader = NABLoader(config)
+
+        with pytest.raises(ValueError, match="Could not parse timestamp"):
+            loader._parse_timestamp("not-a-timestamp")
+
+    def test_load_labels_caching(self, nab_fixture_dir: Path) -> None:
+        """Test that labels are cached after first load."""
+        config = ExternalDataConfig(data_cache_dir=nab_fixture_dir.parent)
+        loader = NABLoader(config)
+
+        # First load
+        labels1 = loader._load_labels(nab_fixture_dir)
+        assert loader._labels_cache is not None
+
+        # Second load should return cached
+        labels2 = loader._load_labels(nab_fixture_dir)
+        assert labels1 is labels2
+
+    def test_load_labels_file_not_found(self, temp_dir: Path) -> None:
+        """Test loading labels from non-existent file."""
+        config = ExternalDataConfig(data_cache_dir=temp_dir)
+        loader = NABLoader(config)
+
+        with pytest.raises(FileNotFoundError, match="Labels file not found"):
+            loader._load_labels(temp_dir / "nonexistent")
+
+    def test_load_handles_csv_errors(
+        self, nab_fixture_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that CSV loading errors are handled gracefully."""
+        import logging
+
+        # Create a malformed CSV file
+        bad_csv = nab_fixture_dir / "data" / "artificialNoAnomaly" / "bad_file.csv"
+        bad_csv.write_text("timestamp,value\ninvalid-timestamp,not-a-number\n")
+
+        config = ExternalDataConfig(data_cache_dir=nab_fixture_dir.parent)
+        loader = NABLoader(config)
+
+        with caplog.at_level(logging.WARNING):
+            datasets = list(loader.load(nab_fixture_dir))
+
+        # Should still load the valid files
+        assert len(datasets) >= 3  # Original 3 files should load
+        assert "Failed to load" in caplog.text
+
+    def test_load_handles_invalid_anomaly_window(self, temp_dir: Path) -> None:
+        """Test that invalid anomaly windows are skipped."""
+        import json
+
+        # Create directory structure
+        data_dir = temp_dir / "data" / "artificialWithAnomaly"
+        labels_dir = temp_dir / "labels"
+        data_dir.mkdir(parents=True)
+        labels_dir.mkdir(parents=True)
+
+        # Create CSV file
+        csv_file = data_dir / "test.csv"
+        with open(csv_file, "w", newline="") as f:
+            f.write("timestamp,value\n")
+            f.write("2014-04-01 00:00:00,1.0\n")
+            f.write("2014-04-01 00:05:00,2.0\n")
+
+        # Create labels with invalid window (not 2 elements)
+        labels = {
+            "artificialWithAnomaly/test.csv": [
+                ["2014-04-01 00:00:00"],  # Invalid: only 1 element
+                ["2014-04-01 00:00:00", "2014-04-01 00:05:00", "extra"],  # Invalid: 3 elements
+            ]
+        }
+        with open(labels_dir / "combined_windows.json", "w") as f:
+            json.dump(labels, f)
+
+        config = ExternalDataConfig(data_cache_dir=temp_dir.parent)
+        loader = NABLoader(config)
+
+        datasets = list(loader.load(temp_dir))
+
+        assert len(datasets) == 1
+        # Invalid windows should be skipped
+        assert len(datasets[0].anomaly_windows) == 0
+
+    def test_load_missing_category_directory(
+        self, nab_fixture_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that missing category directories are handled."""
+        import logging
+        import shutil
+
+        # Remove a category directory
+        shutil.rmtree(nab_fixture_dir / "data" / "realTraffic")
+
+        config = ExternalDataConfig(data_cache_dir=nab_fixture_dir.parent)
+        loader = NABLoader(config)
+
+        with caplog.at_level(logging.WARNING):
+            datasets = list(loader.load(nab_fixture_dir))
+
+        # Should still load remaining categories
+        assert len(datasets) >= 2
+
+
+# ============================================================================
+# Module-Level Function Tests
+# ============================================================================
+
+
+class TestModuleFunctions:
+    """Tests for module-level functions."""
+
+    def test_download_all(self, nab_fixture_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
+        """Test download_all function."""
+        import logging
+
+        from benchmarks.external_datasets import download_all
+
+        config = ExternalDataConfig(
+            data_cache_dir=nab_fixture_dir,
+            enabled_datasets=["nab"],
+        )
+
+        with caplog.at_level(logging.INFO):
+            download_all(config)
+
+        assert "Downloading nab" in caplog.text
+
+    def test_load_all(self, nab_fixture_dir: Path) -> None:
+        """Test load_all function."""
+        from benchmarks.external_datasets import load_all
+
+        config = ExternalDataConfig(
+            data_cache_dir=nab_fixture_dir.parent,
+            enabled_datasets=["nab"],
+        )
+
+        # Rename fixture dir to "nab" to match enabled_datasets
+        import shutil
+
+        nab_dir = nab_fixture_dir.parent / "nab"
+        if nab_dir.exists():
+            shutil.rmtree(nab_dir)
+        shutil.copytree(nab_fixture_dir, nab_dir)
+
+        datasets = list(load_all(config))
+
+        assert len(datasets) >= 3
+
+    def test_load_all_triggers_download(
+        self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test load_all triggers download when data not present."""
+        from benchmarks.external_datasets import load_all
+
+        download_called = False
+
+        def mock_download(self: NABLoader, target_dir: Path) -> None:
+            nonlocal download_called
+            download_called = True
+            # Create minimal structure to satisfy is_downloaded
+            (target_dir / "data").mkdir(parents=True)
+            labels_dir = target_dir / "labels"
+            labels_dir.mkdir(parents=True)
+            (labels_dir / "combined_windows.json").write_text("{}")
+
+        monkeypatch.setattr(NABLoader, "download", mock_download)
+
+        config = ExternalDataConfig(
+            data_cache_dir=temp_dir,
+            enabled_datasets=["nab"],
+        )
+
+        # This should trigger download since data doesn't exist
+        list(load_all(config))
+
+        assert download_called
