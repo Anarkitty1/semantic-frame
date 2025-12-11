@@ -1,6 +1,6 @@
 # Semantic Frame Benchmark Results
 
-Generated: 2025-12-09 13:04:33
+Generated: 2025-12-11 14:25:10
 Model: claude-sonnet-4-20250514
 
 ## Executive Summary

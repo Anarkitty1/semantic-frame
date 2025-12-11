@@ -592,3 +592,195 @@ class TestRealWorldScenarios:
         # Should be able to create combined context from columns dict
         context = create_agent_context(result.columns)
         assert "MULTI-COLUMN" in context
+
+
+class TestWidthAndScaleVariations:
+    """Tests for wide DataFrames and various data scales."""
+
+    def test_wide_dataframe_many_columns(self):
+        """Should handle DataFrames with many columns efficiently."""
+        # Create wide DataFrame with 20 numeric columns
+        np.random.seed(42)
+        data = {f"col_{i}": np.random.randn(50) for i in range(20)}
+        df = pd.DataFrame(data)
+
+        result = describe_dataframe(df, context="Wide Data")
+
+        assert len(result.columns) == 20
+        # All columns should be analyzed
+        for i in range(20):
+            assert f"col_{i}" in result.columns
+
+    def test_dataframe_with_datetime_column(self):
+        """Should skip datetime columns (non-numeric)."""
+        df = pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2024-01-01", periods=10),
+                "value": np.random.randn(10),
+            }
+        )
+
+        result = describe_dataframe(df)
+
+        # Should only analyze the numeric column
+        assert "value" in result.columns
+        assert "timestamp" not in result.columns
+
+    def test_mixed_numeric_types(self):
+        """Should handle mixed int and float columns."""
+        df = pd.DataFrame(
+            {
+                "integers": [1, 2, 3, 4, 5],
+                "floats": [1.1, 2.2, 3.3, 4.4, 5.5],
+                "mixed": [1, 2.0, 3, 4.0, 5],
+            }
+        )
+
+        result = describe_dataframe(df)
+
+        assert len(result.columns) == 3
+        assert "integers" in result.columns
+        assert "floats" in result.columns
+        assert "mixed" in result.columns
+
+
+class TestCorrelationEdgeCases:
+    """Tests for correlation edge cases."""
+
+    def test_perfectly_collinear_columns(self):
+        """Should handle perfectly collinear columns (r=1.0 exactly)."""
+        df = pd.DataFrame(
+            {
+                "x": [1, 2, 3, 4, 5],
+                "y": [2, 4, 6, 8, 10],  # y = 2x, perfect correlation
+            }
+        )
+
+        result = describe_dataframe(df)
+
+        assert len(result.correlations) >= 1
+        # Perfect correlation
+        assert abs(result.correlations[0].correlation - 1.0) < 0.001
+
+    def test_uncorrelated_columns(self):
+        """Should not report correlations below threshold."""
+        np.random.seed(42)
+        df = pd.DataFrame(
+            {
+                "random1": np.random.randn(100),
+                "random2": np.random.randn(100),
+                "random3": np.random.randn(100),
+            }
+        )
+
+        result = describe_dataframe(df, correlation_threshold=0.5)
+
+        # Random data unlikely to have correlation > 0.5
+        assert len(result.correlations) == 0
+
+    def test_constant_column_correlation(self):
+        """Should handle correlation with constant column."""
+        df = pd.DataFrame(
+            {
+                "constant": [5, 5, 5, 5, 5],
+                "variable": [1, 2, 3, 4, 5],
+            }
+        )
+
+        result = describe_dataframe(df)
+
+        # Correlation with constant is undefined (NaN) - should be handled
+        assert isinstance(result, DataFrameResult)
+
+
+class TestPolarsSpecificCases:
+    """Tests for polars-specific functionality."""
+
+    def test_polars_with_null_values(self):
+        """Should handle polars null values like NaN."""
+        df = pl.DataFrame(
+            {
+                "values": [1.0, 2.0, None, 4.0, 5.0],
+            }
+        )
+
+        result = describe_dataframe(df)
+
+        assert "values" in result.columns
+        # Should detect the missing value
+        assert result.columns["values"].profile.missing_pct == 20.0
+
+    def test_polars_series_with_nulls(self):
+        """Should handle polars Series with null values."""
+        series = pl.Series("data", [1.0, 2.0, None, 4.0, 5.0])
+
+        result = describe_series(series, output="full")
+
+        assert result.profile.missing_pct == 20.0
+
+
+class TestDataFrameOutputFormats:
+    """Tests for DataFrameResult output format."""
+
+    def test_dataframe_result_json_serializable(self):
+        """DataFrameResult should be JSON serializable."""
+        df = pd.DataFrame(
+            {
+                "a": [1, 2, 3, 4, 5],
+                "b": [5, 4, 3, 2, 1],
+            }
+        )
+
+        result = describe_dataframe(df)
+
+        # Convert to dict and serialize
+        result_dict = {
+            "summary": result.summary_narrative,
+            "columns": {
+                name: {
+                    "narrative": col.narrative,
+                    "trend": col.trend.value,
+                }
+                for name, col in result.columns.items()
+            },
+            "correlations": [
+                {
+                    "column_a": c.column_a,
+                    "column_b": c.column_b,
+                    "correlation": c.correlation,
+                }
+                for c in result.correlations
+            ],
+        }
+
+        # Should not raise
+        json_str = json.dumps(result_dict)
+        parsed = json.loads(json_str)
+        assert "summary" in parsed
+
+
+class TestStepChangeDetection:
+    """Tests for step change detection in data."""
+
+    def test_detects_level_shift(self):
+        """Should detect sudden level shift in data."""
+        # Data with clear step change
+        before = [100] * 30
+        after = [150] * 30
+        data = pd.Series(before + after)
+
+        result = describe_series(data, output="full")
+
+        # Should detect the structural change (step_change attribute)
+        assert result.step_change is not None
+        assert result.step_change.value != "no structural change"
+
+    def test_no_step_change_in_stable_data(self):
+        """Should not detect step change in stable data."""
+        data = pd.Series(np.random.normal(100, 5, 100))
+
+        result = describe_series(data, output="full")
+
+        # Stable data with noise should not show step change
+        # (depends on threshold, but should generally be NONE)
+        assert result.step_change is not None

@@ -21,6 +21,7 @@ from semantic_frame.core.enums import (
     DataQuality,
     DistributionShape,
     SeasonalityState,
+    StructuralChange,
     TrendState,
     VolatilityState,
 )
@@ -980,3 +981,590 @@ class TestAccelerationIntegration:
         accel = calc_acceleration(values)
         # With noise, may be any positive state
         assert accel > -0.3  # At least not strongly decelerating
+
+
+class TestZscoreZeroStdDeviationPath:
+    """Tests specifically targeting the std==0 fallback path in _detect_anomalies_zscore.
+
+    Covers lines 229-236: when std=0 but max_dev > 0, uses deviation-based detection.
+    """
+
+    def test_zscore_std_zero_with_single_outlier(self):
+        """When std==0 exactly (all values equal except outlier), use deviation fallback.
+
+        This requires crafting data where np.std() returns exactly 0.0.
+        This happens when ALL values including the outlier result in std=0,
+        which is only possible with identical values (covered by max_dev==0 path).
+
+        The std==0 with max_dev>0 path requires mocking since real data with an
+        outlier will have std>0.
+        """
+        from unittest.mock import patch
+
+        # Create data with an outlier
+        values = np.array([5.0] * 15 + [100.0])
+
+        # Mock np.std to return 0 to force the fallback path
+        original_std = np.std
+
+        def mock_std(arr, *args, **kwargs):
+            # Return 0 for our specific test array to trigger the fallback
+            if len(arr) == 16 and arr[-1] == 100.0:
+                return 0.0
+            return original_std(arr, *args, **kwargs)
+
+        with patch.object(np, "std", side_effect=mock_std):
+            anomalies = detect_anomalies(values)
+
+        # Should detect the outlier via deviation-based method
+        assert len(anomalies) >= 1
+        assert any(a.value == 100.0 for a in anomalies)
+
+    def test_zscore_deviation_threshold_calculation(self):
+        """Verify deviation-based threshold uses max_dev * 0.5.
+
+        Tests lines 229-236 logic: values with deviation > max_dev*0.5 are flagged.
+        """
+        from unittest.mock import patch
+
+        # Create data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100]
+        # median=0, max_dev=100, threshold=50
+        # Only the 100 should be flagged (dev=100 > 50)
+        values = np.array([0.0] * 10 + [100.0])
+
+        # Mock std to return 0
+        with patch.object(np, "std", return_value=0.0):
+            anomalies = detect_anomalies(values)
+
+        assert len(anomalies) == 1
+        assert anomalies[0].value == 100.0
+        # z_approx = dev / (max_dev / 3) = 100 / (100/3) = 3.0
+        assert abs(anomalies[0].z_score - 3.0) < 0.01
+
+
+class TestDistributionConstantData:
+    """Tests for distribution shape with constant data.
+
+    Covers line 316: np.ptp(values) == 0 returns NORMAL early.
+    """
+
+    def test_all_identical_values(self):
+        """Constant data (ptp=0) should return NORMAL immediately.
+
+        Tests line 316: early return for constant data.
+        """
+        values = np.array([42.0] * 100)
+        shape = calc_distribution_shape(values)
+        assert shape == DistributionShape.NORMAL
+
+    def test_all_zeros(self):
+        """All zeros should return NORMAL."""
+        values = np.array([0.0] * 100)
+        shape = calc_distribution_shape(values)
+        assert shape == DistributionShape.NORMAL
+
+    def test_all_negative_same(self):
+        """All same negative values should return NORMAL."""
+        values = np.array([-5.0] * 100)
+        shape = calc_distribution_shape(values)
+        assert shape == DistributionShape.NORMAL
+
+
+class TestDistributionScipyExceptionPath:
+    """Tests specifically targeting the scipy exception path.
+
+    Covers lines 335-342: when scipy.stats.skew/kurtosis raises an exception.
+    """
+
+    def test_scipy_exception_returns_normal(self):
+        """When scipy raises, should return NORMAL and log.
+
+        Tests lines 335-342: exception handling path.
+        """
+        from unittest.mock import patch
+
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+        # Mock skew to raise ValueError
+        with patch("semantic_frame.core.analyzers.skew", side_effect=ValueError("Mock error")):
+            shape = calc_distribution_shape(values)
+
+        assert shape == DistributionShape.NORMAL
+
+    def test_scipy_floating_point_error(self):
+        """FloatingPointError from scipy should be handled.
+
+        Tests line 335: FloatingPointError in exception list.
+        """
+        from unittest.mock import patch
+
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+        with patch(
+            "semantic_frame.core.analyzers.skew", side_effect=FloatingPointError("overflow")
+        ):
+            shape = calc_distribution_shape(values)
+
+        assert shape == DistributionShape.NORMAL
+
+
+class TestDistributionBimodalPath:
+    """Tests specifically for the BIMODAL detection path.
+
+    Covers line 361: k < -1 (but not uniform) returns BIMODAL.
+    """
+
+    def test_flat_topped_not_uniform(self):
+        """Distribution with k < -1 but |s| >= 0.3 should be BIMODAL.
+
+        Tests line 361: BIMODAL path (k < -1 but skewed so not UNIFORM).
+        """
+        from unittest.mock import patch
+
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+        # Mock to return kurtosis < -1 but skewness >= 0.3 (not uniform)
+        with patch("semantic_frame.core.analyzers.skew", return_value=0.5):
+            with patch("semantic_frame.core.analyzers.kurtosis", return_value=-1.5):
+                shape = calc_distribution_shape(values)
+
+        assert shape == DistributionShape.BIMODAL
+
+
+class TestSeasonalityDetrended:
+    """Tests for seasonality edge cases after detrending.
+
+    Covers line 403: effective_max_lag < 2 after adjustment.
+    Covers lines 434-444: pearsonr exception handling.
+    Covers line 447: empty autocorrs list.
+    """
+
+    def test_effective_max_lag_becomes_one(self):
+        """When max_lag is explicitly set low, should return NONE.
+
+        Tests line 403: effective_max_lag < 2.
+        """
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+        # With max_lag=1, effective_max_lag = min(1, 4) = 1 which is < 2
+        autocorr, state = calc_seasonality(values, max_lag=1)
+        assert state == SeasonalityState.NONE
+        assert autocorr == 0.0
+
+    def test_pearsonr_value_error_handled(self):
+        """When pearsonr raises ValueError, should continue with other lags.
+
+        Tests lines 434-444: exception handling in autocorrelation loop.
+        """
+        from unittest.mock import patch
+
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0] * 10)
+
+        # Mock pearsonr to raise on first call, succeed on others
+        original_pearsonr = __import__("scipy.stats", fromlist=["pearsonr"]).pearsonr
+        call_count = [0]
+
+        def mock_pearsonr(x, y):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ValueError("Mock pearsonr failure")
+            return original_pearsonr(x, y)
+
+        with patch("semantic_frame.core.analyzers.pearsonr", side_effect=mock_pearsonr):
+            autocorr, state = calc_seasonality(values)
+
+        # Should still return a valid result (from other lags)
+        assert state is not None
+
+    def test_all_correlations_nan_returns_none(self):
+        """When all correlations are NaN, should return NONE.
+
+        Tests line 447: empty autocorrs list after filtering NaN.
+        """
+        from unittest.mock import patch
+
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0] * 10)
+
+        # Mock pearsonr to always return NaN
+        with patch("semantic_frame.core.analyzers.pearsonr", return_value=(np.nan, 0.0)):
+            autocorr, state = calc_seasonality(values)
+
+        assert state == SeasonalityState.NONE
+        assert autocorr == 0.0
+
+
+class TestStepChangeEdgeCases:
+    """Tests for step change detection edge cases.
+
+    Covers line 480: n < window_size * 2.
+    Covers line 485: global_std == 0.
+    """
+
+    def test_array_too_short_for_window(self):
+        """Array shorter than 2*window_size returns NONE.
+
+        Tests line 480: n < window_size * 2.
+        """
+        from semantic_frame.core.analyzers import detect_step_changes
+
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])  # 5 elements, default window=10
+        change_type, idx = detect_step_changes(values)
+        assert change_type == StructuralChange.NONE
+        assert idx is None
+
+    def test_constant_data_step_change(self):
+        """Constant data (global_std=0) returns NONE.
+
+        Tests line 485: global_std == 0.
+        """
+        from semantic_frame.core.analyzers import detect_step_changes
+
+        values = np.array([5.0] * 50)
+        change_type, idx = detect_step_changes(values)
+        assert change_type == StructuralChange.NONE
+        assert idx is None
+
+
+class TestCalcAccelerationException:
+    """Tests for calc_acceleration exception handling.
+
+    Covers lines 558-559: np.linalg.LinAlgError or ValueError in polyfit.
+    """
+
+    def test_polyfit_linalg_error(self):
+        """LinAlgError from polyfit should return 0.0.
+
+        Tests lines 558-559: exception handling.
+        """
+        from unittest.mock import patch
+
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+        with patch("numpy.polyfit", side_effect=np.linalg.LinAlgError("Singular matrix")):
+            accel = calc_acceleration(values)
+
+        assert accel == 0.0
+
+    def test_polyfit_value_error(self):
+        """ValueError from polyfit should return 0.0.
+
+        Tests lines 558-559: ValueError in exception list.
+        """
+        from unittest.mock import patch
+
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+        with patch("numpy.polyfit", side_effect=ValueError("Bad input")):
+            accel = calc_acceleration(values)
+
+        assert accel == 0.0
+
+
+# =============================================================================
+# Boundary Condition Tests
+# =============================================================================
+
+
+class TestTrendBoundaries:
+    """Tests for exact boundary values in classify_trend.
+
+    Thresholds:
+    - > 0.5: RISING_SHARP
+    - > 0.1: RISING_STEADY
+    - < -0.5: FALLING_SHARP
+    - < -0.1: FALLING_STEADY
+    - else: FLAT
+    """
+
+    def test_exactly_at_rising_sharp_boundary(self):
+        """Test slope exactly at 0.5 (boundary between STEADY and SHARP)."""
+        assert classify_trend(0.5) == TrendState.RISING_STEADY  # 0.5 is NOT > 0.5
+        assert classify_trend(0.50001) == TrendState.RISING_SHARP  # Just above
+
+    def test_exactly_at_rising_steady_boundary(self):
+        """Test slope exactly at 0.1 (boundary between FLAT and STEADY)."""
+        assert classify_trend(0.1) == TrendState.FLAT  # 0.1 is NOT > 0.1
+        assert classify_trend(0.10001) == TrendState.RISING_STEADY  # Just above
+
+    def test_exactly_at_falling_sharp_boundary(self):
+        """Test slope exactly at -0.5."""
+        assert classify_trend(-0.5) == TrendState.FALLING_STEADY  # -0.5 is NOT < -0.5
+        assert classify_trend(-0.50001) == TrendState.FALLING_SHARP  # Just below
+
+    def test_exactly_at_falling_steady_boundary(self):
+        """Test slope exactly at -0.1."""
+        assert classify_trend(-0.1) == TrendState.FLAT  # -0.1 is NOT < -0.1
+        assert classify_trend(-0.10001) == TrendState.FALLING_STEADY  # Just below
+
+    def test_zero_slope(self):
+        """Test exactly zero slope."""
+        assert classify_trend(0.0) == TrendState.FLAT
+
+    def test_very_small_positive(self):
+        """Test very small positive slope."""
+        assert classify_trend(0.001) == TrendState.FLAT
+        assert classify_trend(0.05) == TrendState.FLAT
+        assert classify_trend(0.099) == TrendState.FLAT
+
+    def test_very_small_negative(self):
+        """Test very small negative slope."""
+        assert classify_trend(-0.001) == TrendState.FLAT
+        assert classify_trend(-0.05) == TrendState.FLAT
+        assert classify_trend(-0.099) == TrendState.FLAT
+
+
+class TestVolatilityBoundaries:
+    """Tests for exact boundary values in calc_volatility.
+
+    Thresholds (coefficient of variation):
+    - CV < 0.05: COMPRESSED
+    - CV < 0.15: STABLE
+    - CV < 0.30: MODERATE
+    - CV < 0.50: EXPANDING
+    - CV >= 0.50: EXTREME
+    """
+
+    def test_cv_at_compressed_boundary(self):
+        """CV at exactly 0.05 should be STABLE (not COMPRESSED)."""
+        # CV = std / |mean| = 0.05 requires std = 0.05 * mean
+        # Test with values that give CV just below the 0.05 threshold
+        values_below = np.array([99.0, 101.0, 99.5, 100.5, 100.0])  # Low CV
+        cv_below, state_below = calc_volatility(values_below)
+        assert state_below == VolatilityState.COMPRESSED
+
+    def test_cv_at_stable_boundary(self):
+        """CV around 0.15 boundary."""
+        # Create data with higher variance
+        values = np.array([85.0, 115.0, 90.0, 110.0, 100.0])  # ~15% spread
+        cv, state = calc_volatility(values)
+        assert state in (VolatilityState.STABLE, VolatilityState.MODERATE)
+
+    def test_cv_at_moderate_boundary(self):
+        """CV around 0.30 boundary."""
+        values = np.array([70.0, 130.0, 80.0, 120.0, 100.0])  # ~30% spread
+        cv, state = calc_volatility(values)
+        assert state in (VolatilityState.MODERATE, VolatilityState.EXPANDING)
+
+    def test_cv_at_expanding_boundary(self):
+        """CV around 0.50 boundary."""
+        values = np.array([50.0, 150.0, 60.0, 140.0, 100.0])  # ~50% spread
+        cv, state = calc_volatility(values)
+        assert state in (VolatilityState.EXPANDING, VolatilityState.EXTREME)
+
+    def test_very_high_cv(self):
+        """Very high CV should be EXTREME."""
+        values = np.array([1.0, 100.0, 2.0, 99.0, 50.0])  # High variance
+        cv, state = calc_volatility(values)
+        assert state == VolatilityState.EXTREME
+
+
+class TestAccelerationBoundaries:
+    """Tests for exact boundary values in classify_acceleration.
+
+    Thresholds:
+    - > 0.3: ACCELERATING_SHARPLY
+    - > 0.1: ACCELERATING
+    - >= -0.1 and <= 0.1: STEADY
+    - < -0.1: DECELERATING
+    - < -0.3: DECELERATING_SHARPLY
+    """
+
+    def test_exactly_at_accelerating_sharply_boundary(self):
+        """Test acceleration exactly at 0.3."""
+        assert classify_acceleration(0.3) == AccelerationState.ACCELERATING  # 0.3 is NOT > 0.3
+        assert classify_acceleration(0.30001) == AccelerationState.ACCELERATING_SHARPLY
+
+    def test_exactly_at_accelerating_boundary(self):
+        """Test acceleration exactly at 0.1."""
+        assert classify_acceleration(0.1) == AccelerationState.STEADY  # 0.1 is NOT > 0.1
+        assert classify_acceleration(0.10001) == AccelerationState.ACCELERATING
+
+    def test_exactly_at_decelerating_sharply_boundary(self):
+        """Test acceleration exactly at -0.3."""
+        assert classify_acceleration(-0.3) == AccelerationState.DECELERATING  # -0.3 is NOT < -0.3
+        assert classify_acceleration(-0.30001) == AccelerationState.DECELERATING_SHARPLY
+
+    def test_exactly_at_decelerating_boundary(self):
+        """Test acceleration exactly at -0.1."""
+        assert classify_acceleration(-0.1) == AccelerationState.STEADY  # -0.1 is NOT < -0.1
+        assert classify_acceleration(-0.10001) == AccelerationState.DECELERATING
+
+    def test_zero_acceleration(self):
+        """Test exactly zero acceleration."""
+        assert classify_acceleration(0.0) == AccelerationState.STEADY
+
+
+class TestSeasonalityBoundaries:
+    """Tests for exact boundary values in calc_seasonality classification.
+
+    Thresholds (peak autocorrelation):
+    - < 0.3: NONE
+    - < 0.5: WEAK
+    - < 0.7: MODERATE
+    - >= 0.7: STRONG
+    """
+
+    def test_autocorr_boundaries(self):
+        """Verify boundary classifications work correctly.
+
+        Note: These thresholds are checked in the function, not at exact boundaries
+        since autocorrelation is computed from data, not passed directly.
+        """
+        # Test with data that produces known autocorrelation patterns
+        # Perfect repeating pattern should give high autocorr
+        pattern = [1.0, 2.0, 1.0, 2.0] * 20
+        values = np.array(pattern)
+        autocorr, state = calc_seasonality(values)
+
+        # Should be MODERATE or STRONG for clear pattern
+        assert state in (SeasonalityState.MODERATE, SeasonalityState.STRONG)
+
+        # Random data should give low autocorr
+        np.random.seed(42)
+        random_values = np.random.randn(80)
+        autocorr_random, state_random = calc_seasonality(random_values)
+        assert state_random in (SeasonalityState.NONE, SeasonalityState.WEAK)
+
+
+class TestAnomalyStateBoundaries:
+    """Tests for exact boundary values in classify_anomaly_state.
+
+    Thresholds:
+    - No anomalies: NONE
+    - count <= 2: MINOR (unless z_score > 5)
+    - count >= 3 and count <= 5: SIGNIFICANT
+    - count > 5 OR max_z > 5: EXTREME
+    """
+
+    def test_zero_anomalies(self):
+        """No anomalies should return NONE."""
+        assert classify_anomaly_state([]) == AnomalyState.NONE
+
+    def test_one_anomaly_low_zscore(self):
+        """One anomaly with low z-score should be MINOR."""
+        from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+        anomalies = [AnomalyInfo(index=0, value=100.0, z_score=3.0)]
+        assert classify_anomaly_state(anomalies) == AnomalyState.MINOR
+
+    def test_two_anomalies_low_zscore(self):
+        """Two anomalies with low z-score should be MINOR."""
+        from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+        anomalies = [
+            AnomalyInfo(index=0, value=100.0, z_score=3.0),
+            AnomalyInfo(index=1, value=101.0, z_score=3.5),
+        ]
+        assert classify_anomaly_state(anomalies) == AnomalyState.MINOR
+
+    def test_three_anomalies_significant(self):
+        """Three anomalies should be SIGNIFICANT."""
+        from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+        anomalies = [AnomalyInfo(index=i, value=100.0, z_score=3.0) for i in range(3)]
+        assert classify_anomaly_state(anomalies) == AnomalyState.SIGNIFICANT
+
+    def test_five_anomalies_significant(self):
+        """Five anomalies should still be SIGNIFICANT."""
+        from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+        anomalies = [AnomalyInfo(index=i, value=100.0, z_score=3.0) for i in range(5)]
+        assert classify_anomaly_state(anomalies) == AnomalyState.SIGNIFICANT
+
+    def test_six_anomalies_extreme(self):
+        """Six anomalies should be EXTREME."""
+        from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+        anomalies = [AnomalyInfo(index=i, value=100.0, z_score=3.0) for i in range(6)]
+        assert classify_anomaly_state(anomalies) == AnomalyState.EXTREME
+
+    def test_one_anomaly_extreme_zscore(self):
+        """Single anomaly with z > 5 should be EXTREME."""
+        from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+        anomalies = [AnomalyInfo(index=0, value=1000.0, z_score=5.5)]
+        assert classify_anomaly_state(anomalies) == AnomalyState.EXTREME
+
+    def test_exactly_at_zscore_boundary(self):
+        """Z-score exactly at 5.0 should NOT be EXTREME."""
+        from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+        anomalies = [AnomalyInfo(index=0, value=100.0, z_score=5.0)]
+        assert classify_anomaly_state(anomalies) == AnomalyState.MINOR
+
+    def test_just_above_zscore_boundary(self):
+        """Z-score just above 5.0 should be EXTREME."""
+        from semantic_frame.interfaces.json_schema import AnomalyInfo
+
+        anomalies = [AnomalyInfo(index=0, value=100.0, z_score=5.01)]
+        assert classify_anomaly_state(anomalies) == AnomalyState.EXTREME
+
+
+class TestDataQualityBoundaries:
+    """Tests for exact boundary values in assess_data_quality.
+
+    Actual thresholds (from implementation):
+    - < 1%: PRISTINE
+    - < 5%: GOOD
+    - < 20%: SPARSE
+    - >= 20%: FRAGMENTED
+    """
+
+    def test_zero_missing_pristine(self):
+        """0% missing should be PRISTINE."""
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        pct, quality = assess_data_quality(values)
+        assert pct == 0.0
+        assert quality == DataQuality.PRISTINE
+
+    def test_under_one_percent_pristine(self):
+        """Just under 1% missing should be PRISTINE."""
+        # 0.5% missing
+        values = np.array([1.0] * 199 + [np.nan])  # 1/200 = 0.5%
+        pct, quality = assess_data_quality(values)
+        assert quality == DataQuality.PRISTINE
+
+    def test_exactly_one_percent_boundary(self):
+        """1% missing is at boundary - should be GOOD (not PRISTINE)."""
+        values = np.array([1.0] * 99 + [np.nan])  # 1% missing
+        pct, quality = assess_data_quality(values)
+        assert abs(pct - 1.0) < 0.1
+        assert quality == DataQuality.GOOD  # 1% is NOT < 1%
+
+    def test_under_five_percent_good(self):
+        """4% missing should be GOOD."""
+        values = np.array([1.0] * 96 + [np.nan] * 4)  # 4% missing
+        pct, quality = assess_data_quality(values)
+        assert quality == DataQuality.GOOD
+
+    def test_exactly_five_percent_boundary(self):
+        """5% missing is at boundary - should be SPARSE (5% is NOT < 5%)."""
+        values = np.array([1.0] * 95 + [np.nan] * 5)  # 5% missing
+        pct, quality = assess_data_quality(values)
+        assert abs(pct - 5.0) < 0.1
+        assert quality == DataQuality.SPARSE  # 5% is NOT < 5%
+
+    def test_under_twenty_percent_sparse(self):
+        """19% missing should be SPARSE."""
+        values = np.array([1.0] * 81 + [np.nan] * 19)  # 19% missing
+        pct, quality = assess_data_quality(values)
+        assert quality == DataQuality.SPARSE
+
+    def test_exactly_twenty_percent_boundary(self):
+        """20% missing is at boundary - should be FRAGMENTED (20% is NOT < 20%)."""
+        values = np.array([1.0] * 80 + [np.nan] * 20)  # 20% missing
+        pct, quality = assess_data_quality(values)
+        assert abs(pct - 20.0) < 0.1
+        assert quality == DataQuality.FRAGMENTED  # 20% is NOT < 20%
+
+    def test_above_twenty_percent_fragmented(self):
+        """21% missing should be FRAGMENTED."""
+        values = np.array([1.0] * 79 + [np.nan] * 21)  # 21% missing
+        pct, quality = assess_data_quality(values)
+        assert quality == DataQuality.FRAGMENTED
+
+    def test_all_missing_fragmented(self):
+        """100% missing should be FRAGMENTED."""
+        values = np.array([np.nan] * 10)
+        pct, quality = assess_data_quality(values)
+        assert pct == 100.0
+        assert quality == DataQuality.FRAGMENTED
