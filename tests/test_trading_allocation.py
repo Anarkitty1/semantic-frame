@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
 from semantic_frame.trading import describe_allocation
 from semantic_frame.trading.allocation import (
@@ -352,3 +353,167 @@ class TestEdgeCases:
 
         assert result.portfolio_return < 0
         assert isinstance(result, AllocationResult)
+
+    def test_zero_prices_in_series(self):
+        """Test handling of zero prices (division by zero risk)."""
+        # Price drops to zero then recovers - common in crypto
+        assets = {
+            "Asset1": [100, 50, 0.01, 25, 50],  # Near-zero (not exactly zero)
+            "Asset2": [50, 52, 48, 55, 54],
+        }
+        result = describe_allocation(assets)
+
+        # Should handle gracefully
+        assert isinstance(result, AllocationResult)
+        assert sum(result.suggested_weights.values()) <= 1.01
+
+    def test_nan_values_in_prices(self):
+        """Test handling of NaN values in price data."""
+        assets = {
+            "Asset1": [100, 105, float("nan"), 108, 110],
+            "Asset2": [50, 52, 48, 55, 54],
+        }
+        result = describe_allocation(assets)
+
+        # Should filter NaN and produce valid result
+        assert isinstance(result, AllocationResult)
+        assert np.isfinite(result.portfolio_volatility)
+
+    def test_inf_values_in_prices(self):
+        """Test handling of Inf values in price data."""
+        assets = {
+            "Asset1": [100, 105, float("inf"), 108, 110],
+            "Asset2": [50, 52, 48, 55, 54],
+        }
+        result = describe_allocation(assets)
+
+        # Should filter Inf and produce valid result
+        assert isinstance(result, AllocationResult)
+        assert np.isfinite(result.portfolio_volatility)
+
+    def test_perfectly_correlated_assets(self):
+        """Test with perfectly correlated assets (singular covariance matrix)."""
+        # Identical price movements (correlation = 1.0)
+        base = [100, 110, 105, 115, 120]
+        assets = {
+            "Asset1": base,
+            "Asset2": [x * 2 for x in base],  # Exact multiple
+        }
+        result = describe_allocation(assets, method="min_variance")
+
+        # Should fall back to equal weight gracefully
+        assert isinstance(result, AllocationResult)
+        assert sum(result.suggested_weights.values()) <= 1.01
+
+    def test_all_zero_volatility_assets(self):
+        """Test with all assets having zero volatility (constant prices)."""
+        assets = {
+            "Stable1": [100, 100, 100, 100, 100],
+            "Stable2": [50, 50, 50, 50, 50],
+        }
+        result = describe_allocation(assets, method="risk_parity")
+
+        # Should fall back to equal weight
+        assert isinstance(result, AllocationResult)
+        assert abs(result.suggested_weights["Stable1"] - 0.5) < 0.01
+        assert abs(result.suggested_weights["Stable2"] - 0.5) < 0.01
+
+
+class TestAllocationResultValidation:
+    """Tests for AllocationResult model validation."""
+
+    def test_weights_must_sum_to_one(self):
+        """Test that weights must sum to approximately 1.0."""
+        with pytest.raises(ValidationError, match="must sum to"):
+            AllocationResult(
+                suggested_weights={"A": 0.3, "B": 0.3},  # Sum = 0.6, not 1.0
+                allocation_method=AllocationMethod.EQUAL_WEIGHT,
+                portfolio_return=10.0,
+                portfolio_volatility=15.0,
+                risk_level=RiskLevel.MODERATE,
+                diversification_score=0.5,
+                diversification_level=DiversificationLevel.MODERATE,
+                asset_analyses=(
+                    AssetAnalysis(
+                        name="A",
+                        annualized_return=10.0,
+                        annualized_volatility=15.0,
+                        suggested_weight=0.3,
+                        contribution_to_risk=50.0,
+                    ),
+                    AssetAnalysis(
+                        name="B",
+                        annualized_return=12.0,
+                        annualized_volatility=20.0,
+                        suggested_weight=0.3,
+                        contribution_to_risk=50.0,
+                    ),
+                ),
+                avg_correlation=0.5,
+                narrative="Test narrative",
+                num_assets=2,
+            )
+
+    def test_num_assets_must_match_weights(self):
+        """Test that num_assets must match suggested_weights count."""
+        with pytest.raises(ValidationError, match="num_assets"):
+            AllocationResult(
+                suggested_weights={"A": 0.5, "B": 0.5},
+                allocation_method=AllocationMethod.EQUAL_WEIGHT,
+                portfolio_return=10.0,
+                portfolio_volatility=15.0,
+                risk_level=RiskLevel.MODERATE,
+                diversification_score=0.5,
+                diversification_level=DiversificationLevel.MODERATE,
+                asset_analyses=(
+                    AssetAnalysis(
+                        name="A",
+                        annualized_return=10.0,
+                        annualized_volatility=15.0,
+                        suggested_weight=0.5,
+                        contribution_to_risk=50.0,
+                    ),
+                    AssetAnalysis(
+                        name="B",
+                        annualized_return=12.0,
+                        annualized_volatility=20.0,
+                        suggested_weight=0.5,
+                        contribution_to_risk=50.0,
+                    ),
+                ),
+                avg_correlation=0.5,
+                narrative="Test narrative",
+                num_assets=3,  # Wrong! Should be 2
+            )
+
+    def test_valid_allocation_result(self):
+        """Test that valid allocation result is created successfully."""
+        result = AllocationResult(
+            suggested_weights={"A": 0.5, "B": 0.5},
+            allocation_method=AllocationMethod.EQUAL_WEIGHT,
+            portfolio_return=10.0,
+            portfolio_volatility=15.0,
+            risk_level=RiskLevel.MODERATE,
+            diversification_score=0.5,
+            diversification_level=DiversificationLevel.MODERATE,
+            asset_analyses=(
+                AssetAnalysis(
+                    name="A",
+                    annualized_return=10.0,
+                    annualized_volatility=15.0,
+                    suggested_weight=0.5,
+                    contribution_to_risk=50.0,
+                ),
+                AssetAnalysis(
+                    name="B",
+                    annualized_return=12.0,
+                    annualized_volatility=20.0,
+                    suggested_weight=0.5,
+                    contribution_to_risk=50.0,
+                ),
+            ),
+            avg_correlation=0.5,
+            narrative="Test narrative",
+            num_assets=2,
+        )
+        assert sum(result.suggested_weights.values()) == 1.0

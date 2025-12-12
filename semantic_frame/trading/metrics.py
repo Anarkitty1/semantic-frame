@@ -8,6 +8,8 @@ All calculations are deterministic (NumPy-based) - no LLM involvement.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from semantic_frame.trading.enums import (
@@ -16,6 +18,8 @@ from semantic_frame.trading.enums import (
     RiskProfile,
 )
 from semantic_frame.trading.schemas import TradingMetrics, TradingPerformanceResult
+
+logger = logging.getLogger(__name__)
 
 
 def _calc_streaks(trades: np.ndarray) -> tuple[int, int, int]:

@@ -14,10 +14,13 @@ All calculations are deterministic (NumPy-based) - no LLM involvement.
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class RiskLevel(str, Enum):
@@ -113,10 +116,40 @@ class AllocationResult(BaseModel):
     data_context: str | None = Field(default=None, description="User-provided context")
     num_assets: int = Field(ge=1, description="Number of assets analyzed")
 
+    @model_validator(mode="after")
+    def check_allocation_consistency(self) -> AllocationResult:
+        """Validate cross-field invariants for allocation."""
+        # Weights should sum to <= 1.0 (can be less for target_vol leaving cash)
+        weight_sum = sum(self.suggested_weights.values())
+        if weight_sum > 1.01:
+            raise ValueError(f"suggested_weights must sum to <= 1.0, got {weight_sum:.4f}")
+
+        # num_assets must match suggested_weights count
+        if len(self.suggested_weights) != self.num_assets:
+            raise ValueError(
+                f"num_assets ({self.num_assets}) must match "
+                f"suggested_weights count ({len(self.suggested_weights)})"
+            )
+
+        # num_assets must match asset_analyses count
+        if len(self.asset_analyses) != self.num_assets:
+            raise ValueError(
+                f"num_assets ({self.num_assets}) must match "
+                f"asset_analyses count ({len(self.asset_analyses)})"
+            )
+
+        return self
+
 
 def _calculate_returns(prices: np.ndarray) -> np.ndarray:
     """Calculate returns from price series."""
     returns = np.diff(prices) / prices[:-1]
+    non_finite_count = int(np.sum(~np.isfinite(returns)))
+    if non_finite_count > 0:
+        logger.warning(
+            "Filtered %d non-finite return values (likely due to zero/negative prices)",
+            non_finite_count,
+        )
     result: np.ndarray = returns[np.isfinite(returns)]
     return result
 
@@ -132,6 +165,7 @@ def _annualize_return(returns: np.ndarray, periods_per_year: int = 252) -> float
 def _annualize_volatility(returns: np.ndarray, periods_per_year: int = 252) -> float:
     """Annualize volatility."""
     if len(returns) < 2:
+        logger.warning("Insufficient data for volatility calculation (<2 returns), returning 0.0")
         return 0.0
     std = float(np.std(returns, ddof=1))
     return float(std * np.sqrt(periods_per_year) * 100)  # As percentage
@@ -186,6 +220,7 @@ def _risk_parity_allocation(volatilities: np.ndarray) -> np.ndarray:
     """Risk parity: weight inversely proportional to volatility."""
     if np.all(volatilities == 0):
         n = len(volatilities)
+        logger.warning("All assets have zero volatility - falling back to equal-weight allocation")
         result: np.ndarray = np.ones(n) / n
         return result
 
@@ -209,6 +244,10 @@ def _min_variance_allocation(cov_matrix: np.ndarray) -> np.ndarray:
         weights = weights / np.sum(weights)
         return weights
     except np.linalg.LinAlgError:
+        logger.warning(
+            "Covariance matrix inversion failed (matrix may be singular). "
+            "Falling back to equal-weight allocation."
+        )
         return _equal_weight_allocation(n)
 
 
@@ -217,7 +256,11 @@ def _target_vol_allocation(
     target_vol: float,
     cov_matrix: np.ndarray,
 ) -> np.ndarray:
-    """Scale risk parity allocation to target volatility."""
+    """Scale risk parity allocation to target volatility.
+
+    Adjusts weights to achieve approximate target volatility while
+    maintaining full allocation (weights sum to 1.0).
+    """
     # Start with risk parity
     weights = _risk_parity_allocation(volatilities)
 
@@ -232,9 +275,10 @@ def _target_vol_allocation(
         scale = min(scale, 2.0)
         weights = weights * scale
 
-        # Normalize if over 100%
-        if np.sum(weights) > 1:
-            weights = weights / np.sum(weights)
+    # Always normalize to ensure weights sum to 1.0
+    weight_sum = np.sum(weights)
+    if weight_sum > 0:
+        weights = weights / weight_sum
 
     return weights
 

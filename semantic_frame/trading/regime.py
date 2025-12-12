@@ -11,10 +11,13 @@ All calculations are deterministic (NumPy-based) - no LLM involvement.
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class RegimeType(str, Enum):
@@ -58,6 +61,25 @@ class RegimePeriod(BaseModel):
     avg_return: float = Field(description="Average period return (%)")
     volatility: float = Field(ge=0, description="Volatility during regime")
     strength: RegimeStrength = Field(description="Strength of this regime")
+
+    @model_validator(mode="after")
+    def check_temporal_consistency(self) -> RegimePeriod:
+        """Validate cross-field invariants for regime period."""
+        # Temporal ordering: end_index must be >= start_index
+        if self.end_index < self.start_index:
+            raise ValueError(
+                f"end_index ({self.end_index}) must be >= start_index ({self.start_index})"
+            )
+
+        # Duration must be consistent with indices
+        expected_duration = self.end_index - self.start_index + 1
+        if self.duration != expected_duration:
+            raise ValueError(
+                f"duration ({self.duration}) inconsistent with indices "
+                f"(expected {expected_duration} from {self.start_index} to {self.end_index})"
+            )
+
+        return self
 
 
 class RegimeResult(BaseModel):

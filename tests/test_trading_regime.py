@@ -1,6 +1,8 @@
 """Tests for market regime detection."""
 
 import numpy as np
+import pytest
+from pydantic import ValidationError
 
 from semantic_frame.trading import describe_regime
 from semantic_frame.trading.regime import (
@@ -350,3 +352,49 @@ class TestMCPIntegration:
         result = mcp_describe_regime(returns="invalid data")
 
         assert "Error" in result
+
+
+class TestRegimePeriodValidation:
+    """Tests for RegimePeriod model validation."""
+
+    def test_end_index_must_be_greater_than_start(self):
+        """Test that end_index must be >= start_index."""
+        with pytest.raises(ValidationError, match="end_index.*must be >= start_index"):
+            RegimePeriod(
+                regime_type=RegimeType.BULL,
+                start_index=10,
+                end_index=5,  # Invalid: less than start_index
+                duration=6,
+                cumulative_return=5.0,
+                avg_return=1.0,
+                volatility=0.5,
+                strength=RegimeStrength.STRONG,
+            )
+
+    def test_duration_must_match_indices(self):
+        """Test that duration must be consistent with start and end indices."""
+        with pytest.raises(ValidationError, match="duration.*inconsistent"):
+            RegimePeriod(
+                regime_type=RegimeType.BULL,
+                start_index=0,
+                end_index=10,
+                duration=5,  # Invalid: should be 11 (end - start + 1)
+                cumulative_return=5.0,
+                avg_return=1.0,
+                volatility=0.5,
+                strength=RegimeStrength.STRONG,
+            )
+
+    def test_valid_regime_period(self):
+        """Test that valid regime period is created successfully."""
+        period = RegimePeriod(
+            regime_type=RegimeType.BULL,
+            start_index=0,
+            end_index=10,
+            duration=11,  # Correct: end - start + 1 = 10 - 0 + 1 = 11
+            cumulative_return=5.0,
+            avg_return=1.0,
+            volatility=0.5,
+            strength=RegimeStrength.STRONG,
+        )
+        assert period.duration == period.end_index - period.start_index + 1

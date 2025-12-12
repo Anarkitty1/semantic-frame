@@ -8,10 +8,14 @@ All calculations are deterministic (NumPy-based) - no LLM involvement.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from semantic_frame.trading.enums import DrawdownSeverity, RecoveryState
 from semantic_frame.trading.schemas import DrawdownPeriod, DrawdownResult
+
+logger = logging.getLogger(__name__)
 
 
 def _classify_severity(max_dd_pct: float) -> DrawdownSeverity:

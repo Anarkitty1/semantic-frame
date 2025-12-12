@@ -11,10 +11,13 @@ All calculations are deterministic (NumPy-based) - no LLM involvement.
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
 
 
 class TimeframeSignal(str, Enum):
@@ -291,8 +294,10 @@ def _parse_window_spec(spec: str) -> int | None:
                 num = int(spec[:-1])
                 return num * mult
             except ValueError:
-                pass
+                logger.warning("Could not parse window spec '%s' - will use full data length", spec)
+                return None
 
+    logger.warning("Unrecognized window spec '%s' - will use full data length", spec)
     return None
 
 

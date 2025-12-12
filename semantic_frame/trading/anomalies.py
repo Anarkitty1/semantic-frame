@@ -11,10 +11,13 @@ All calculations are deterministic (NumPy-based) - no LLM involvement.
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
 
 
 class AnomalySeverity(str, Enum):

@@ -9,9 +9,13 @@ All calculations are deterministic (NumPy-based) - no LLM involvement.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from semantic_frame.trading.schemas import AgentRanking, RankingsResult
+
+logger = logging.getLogger(__name__)
 
 
 def _calc_total_return(equity: np.ndarray) -> float:
@@ -25,8 +29,18 @@ def _calc_volatility(equity: np.ndarray) -> float:
     """Calculate return volatility from equity curve."""
     if len(equity) < 3:
         return 0.0
-    returns = np.diff(equity) / equity[:-1]
-    return float(np.std(returns))
+    # Use np.maximum to prevent division by zero for intermediate zero values
+    safe_equity = np.maximum(equity[:-1], 1e-10)
+    returns = np.diff(equity) / safe_equity
+    # Filter non-finite values and warn if any found
+    non_finite_count = int(np.sum(~np.isfinite(returns)))
+    if non_finite_count > 0:
+        logger.warning(
+            "Filtered %d non-finite return values in volatility calculation",
+            non_finite_count,
+        )
+        returns = returns[np.isfinite(returns)]
+    return float(np.std(returns)) if len(returns) > 0 else 0.0
 
 
 def _calc_max_drawdown(equity: np.ndarray) -> float:

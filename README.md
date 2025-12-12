@@ -360,6 +360,69 @@ insight = describe_series(temps, context="Machine Temperature (C)")
 #  3 anomalies detected at indices 142, 156, 161."
 ```
 
+## 📈 Trading Module (v0.4.0)
+
+Specialized semantic analysis for trading agents, portfolio managers, and financial applications.
+
+### Trading Tools
+
+| Tool | Description |
+|------|-------------|
+| `describe_drawdown` | Equity curve drawdown analysis with severity |
+| `describe_trading_performance` | Win rate, Sharpe, profit factor metrics |
+| `describe_rankings` | Multi-agent/strategy comparison |
+| `describe_anomalies` | Enhanced anomaly detection with PnL context |
+| `describe_windows` | Multi-timeframe trend alignment |
+| `describe_regime` | Market regime detection (bull/bear/sideways) |
+| `describe_allocation` | Portfolio allocation suggestions ⚠️ |
+
+### Quick Examples
+
+```python
+from semantic_frame.trading import (
+    describe_trading_performance,
+    describe_drawdown,
+    describe_regime,
+    describe_allocation,
+)
+
+# Trading Performance
+pnl = [100, -50, 75, -25, 150, -30, 80]
+result = describe_trading_performance(pnl, context="My Bot")
+print(result.narrative)
+# "My Bot shows good performance with 57.1% win rate. Profit factor: 2.53..."
+
+# Drawdown Analysis
+equity = [10000, 10500, 10200, 9800, 9500, 10100]
+result = describe_drawdown(equity, context="Strategy")
+print(result.narrative)
+# "Strategy max drawdown: 9.5% (moderate). Currently recovering..."
+
+# Market Regime
+returns = [0.01, 0.015, 0.02, -0.01, 0.025, 0.018]  # Daily returns
+result = describe_regime(returns, context="BTC")
+print(result.narrative)
+# "BTC is in a strong bullish regime. Conditions favor trend-following..."
+
+# Portfolio Allocation (⚠️ Educational only, not financial advice)
+assets = {"BTC": [40000, 42000, 44000], "ETH": [2500, 2650, 2800]}
+result = describe_allocation(assets, method="risk_parity")
+print(result.narrative)
+# "Suggested allocation: BTC (55%), ETH (45%). Risk: high..."
+```
+
+### MCP Integration
+
+All trading tools are available via MCP:
+
+```bash
+semantic-frame-mcp
+```
+
+Tools: `describe_drawdown`, `describe_trading_performance`, `describe_rankings`, `describe_anomalies`, `describe_windows`, `describe_regime`, `describe_allocation`
+
+📖 **[Full Trading Documentation](docs/trading-module.md)** | **[Quick Reference](docs/trading-cheatsheet.md)**
+
 ## API Reference
 
 ### `describe_series(data, context=None, output="text")`
