@@ -1,6 +1,6 @@
 [project]
 name = "semantic-frame"
-version = "0.2.0"
+version = "0.2.1"
 description = "Semantic compression layer for numerical data - token-efficient LLM context with Anthropic Advanced Tool Use support"
 readme = "README.md"
 requires-python = ">=3.10"

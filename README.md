@@ -1,5 +1,7 @@
 # Semantic Frame
 
+<!-- mcp-name: io.github.Anarkitty1/semantic-frame -->
+
 **Token-efficient semantic compression for numerical data.**
 
 Semantic Frame converts raw numerical data (NumPy, Pandas, Polars) into natural language descriptions optimized for LLM consumption. Instead of sending thousands of data points to an AI agent, send a 50-word semantic summary.
