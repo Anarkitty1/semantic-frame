@@ -289,11 +289,15 @@ def describe_anomalies(
         "The Trade Returns has occasional anomalies (2 detected in 8 points).
          Most significant: index 4 (value: 500.00, z-score: 2.8, exceptional profit)."
     """
-    # Convert to numpy array
-    if isinstance(data, list):
-        data = np.array(data, dtype=float)
+    # Convert to numpy array (handles both list and ndarray input)
+    arr: np.ndarray = np.asarray(data, dtype=float)
 
-    n = len(data)
+    # Filter out non-finite values (inf, -inf, nan)
+    finite_mask = np.isfinite(arr)
+    if not np.all(finite_mask):
+        arr = arr[finite_mask]
+
+    n = len(arr)
 
     if n < 3:
         return EnhancedAnomalyResult(
@@ -308,8 +312,8 @@ def describe_anomalies(
         )
 
     # Calculate statistics
-    mean = float(np.mean(data))
-    std = float(np.std(data, ddof=1))
+    mean = float(np.mean(arr))
+    std = float(np.std(arr, ddof=1))
 
     if std == 0:
         return EnhancedAnomalyResult(
@@ -324,7 +328,7 @@ def describe_anomalies(
         )
 
     # Calculate z-scores
-    z_scores = (data - mean) / std
+    z_scores = (arr - mean) / std
 
     # Find anomalies
     anomaly_indices = np.where(np.abs(z_scores) >= z_threshold)[0]
@@ -336,7 +340,7 @@ def describe_anomalies(
     sorted_indices = sorted(anomaly_indices, key=lambda i: abs(z_scores[i]), reverse=True)
 
     for rank, idx in enumerate(sorted_indices[:max_anomalies]):
-        value = float(data[idx])
+        value = float(arr[idx])
         z = float(z_scores[idx])
         severity = _classify_severity(z)
         atype = _classify_type(value, z, mean, is_pnl_data)

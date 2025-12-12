@@ -119,10 +119,12 @@ class AllocationResult(BaseModel):
     @model_validator(mode="after")
     def check_allocation_consistency(self) -> AllocationResult:
         """Validate cross-field invariants for allocation."""
-        # Weights should sum to <= 1.0 (can be less for target_vol leaving cash)
+        # Weights must sum to approximately 1.0 (small tolerance for floating point)
         weight_sum = sum(self.suggested_weights.values())
-        if weight_sum > 1.01:
-            raise ValueError(f"suggested_weights must sum to <= 1.0, got {weight_sum:.4f}")
+        if weight_sum < 0.99 or weight_sum > 1.01:
+            raise ValueError(
+                f"suggested_weights must sum to approximately 1.0, got {weight_sum:.4f}"
+            )
 
         # num_assets must match suggested_weights count
         if len(self.suggested_weights) != self.num_assets:
@@ -143,7 +145,9 @@ class AllocationResult(BaseModel):
 
 def _calculate_returns(prices: np.ndarray) -> np.ndarray:
     """Calculate returns from price series."""
-    returns = np.diff(prices) / prices[:-1]
+    # Suppress warnings for division by zero/inf - we filter them afterward
+    with np.errstate(divide="ignore", invalid="ignore"):
+        returns = np.diff(prices) / prices[:-1]
     non_finite_count = int(np.sum(~np.isfinite(returns)))
     if non_finite_count > 0:
         logger.warning(
@@ -190,7 +194,9 @@ def _calculate_correlation_matrix(returns_dict: dict[str, np.ndarray]) -> np.nda
     min_len = min(len(r) for r in returns_dict.values())
     aligned = np.column_stack([returns_dict[a][-min_len:] for a in assets])
 
-    return np.corrcoef(aligned.T)
+    # Suppress warnings for zero-variance assets (identical prices)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.corrcoef(aligned.T)
 
 
 def _calculate_covariance_matrix(
@@ -421,9 +427,15 @@ def _generate_narrative(
     parts.append(f"{prefix}:")
 
     # Allocation summary
+    total_allocated = sum(weights.values())
     top_holdings = sorted(weights.items(), key=lambda x: x[1], reverse=True)[:3]
     holding_str = ", ".join(f"{name} ({w*100:.0f}%)" for name, w in top_holdings)
-    parts.append(f"Suggested allocation: {holding_str}.")
+
+    if total_allocated < 0.99:
+        cash_pct = (1 - total_allocated) * 100
+        parts.append(f"Suggested allocation: {holding_str}, Cash ({cash_pct:.0f}%).")
+    else:
+        parts.append(f"Suggested allocation: {holding_str}.")
 
     # Risk/return
     parts.append(

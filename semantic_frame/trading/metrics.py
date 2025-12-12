@@ -124,8 +124,9 @@ def _calc_sortino_ratio(
     excess_returns = returns - (risk_free_rate / periods_per_year)
     downside_returns = excess_returns[excess_returns < 0]
 
-    if len(downside_returns) == 0:
-        return None  # No downside risk
+    # Need at least 2 downside returns for std with ddof=1
+    if len(downside_returns) < 2:
+        return None
 
     downside_std = float(np.std(downside_returns, ddof=1))
     if downside_std == 0:
