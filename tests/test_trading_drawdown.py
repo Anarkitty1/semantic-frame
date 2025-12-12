@@ -198,3 +198,67 @@ class TestDrawdownNarrative:
         result = describe_drawdown(equity)
 
         assert "currently" in result.narrative.lower()
+
+
+class TestDrawdownEdgeCases:
+    """Tests for edge cases including NaN/Inf and zero equity handling."""
+
+    def test_nan_values_filtered(self):
+        """Test that NaN values are filtered from equity curve."""
+        equity = [10000, float("nan"), 10500, 9500, float("nan"), 10000]
+        result = describe_drawdown(equity)
+
+        assert isinstance(result, DrawdownResult)
+        assert "nan" not in result.narrative.lower()
+
+    def test_inf_values_filtered(self):
+        """Test that Inf values are filtered from equity curve."""
+        equity = [10000, float("inf"), 10500, float("-inf"), 9500, 10000]
+        result = describe_drawdown(equity)
+
+        assert isinstance(result, DrawdownResult)
+        assert "inf" not in result.narrative.lower()
+
+    def test_numpy_nan_inf_handling(self):
+        """Test handling of numpy NaN and Inf values."""
+        import numpy as np
+
+        equity = np.array([10000, np.nan, 10500, np.inf, 9500, -np.inf, 10000])
+        result = describe_drawdown(equity)
+
+        assert isinstance(result, DrawdownResult)
+
+    def test_equity_with_very_small_values(self):
+        """Test handling of very small equity values (near zero but positive)."""
+        equity = [0.001, 0.0015, 0.001, 0.0008, 0.001]
+        result = describe_drawdown(equity)
+
+        assert isinstance(result, DrawdownResult)
+        # Should calculate drawdown correctly
+        assert result.max_drawdown_pct >= 0
+
+    def test_all_same_equity_no_drawdown(self):
+        """Test flat equity curve has no drawdown."""
+        equity = [10000] * 20
+        result = describe_drawdown(equity)
+
+        assert isinstance(result, DrawdownResult)
+        assert result.max_drawdown_pct == 0.0
+        assert result.severity == DrawdownSeverity.MINIMAL
+
+    def test_monotonically_increasing_no_drawdown(self):
+        """Test always-increasing equity has no drawdown."""
+        equity = list(range(10000, 15000, 100))
+        result = describe_drawdown(equity)
+
+        assert isinstance(result, DrawdownResult)
+        assert result.max_drawdown_pct == 0.0
+
+    def test_single_large_drawdown(self):
+        """Test a single catastrophic drawdown."""
+        equity = [10000, 10500, 3000, 3500]  # 70%+ drawdown
+        result = describe_drawdown(equity)
+
+        assert isinstance(result, DrawdownResult)
+        assert result.max_drawdown_pct > 70
+        assert result.severity == DrawdownSeverity.CATASTROPHIC

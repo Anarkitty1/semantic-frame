@@ -6,7 +6,7 @@ ensuring type safety and consistent output format for trading agents.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from semantic_frame.trading.enums import (
     ConsistencyRating,
@@ -27,12 +27,34 @@ class DrawdownPeriod(BaseModel):
     end_index: int | None = Field(
         default=None, description="Index where fully recovered (None if ongoing)"
     )
-    depth_pct: float = Field(description="Maximum depth as percentage (0-100)")
+    depth_pct: float = Field(ge=0.0, le=100.0, description="Maximum depth as percentage (0-100)")
     duration: int = Field(ge=1, description="Duration in periods from peak to trough")
     recovery_duration: int | None = Field(
         default=None, description="Periods from trough to recovery (None if ongoing)"
     )
     recovered: bool = Field(description="Whether this drawdown has fully recovered")
+
+    @model_validator(mode="after")
+    def check_consistency(self) -> DrawdownPeriod:
+        """Validate cross-field invariants for drawdown period."""
+        # Temporal ordering: start <= trough
+        if self.start_index > self.trough_index:
+            raise ValueError(
+                f"start_index ({self.start_index}) must be <= trough_index ({self.trough_index})"
+            )
+
+        # If recovered, end_index and recovery_duration must be set
+        if self.recovered:
+            if self.end_index is None:
+                raise ValueError("recovered period must have end_index")
+            if self.recovery_duration is None:
+                raise ValueError("recovered period must have recovery_duration")
+            # Temporal ordering: trough <= end
+            if self.trough_index > self.end_index:
+                raise ValueError(
+                    f"trough_index ({self.trough_index}) must be <= end_index ({self.end_index})"
+                )
+        return self
 
 
 class DrawdownResult(BaseModel):
@@ -118,6 +140,17 @@ class TradingMetrics(BaseModel):
         default=None, description="Net profit / max drawdown (None if no drawdown)"
     )
 
+    @model_validator(mode="after")
+    def check_trade_counts(self) -> TradingMetrics:
+        """Validate that trade counts are consistent."""
+        # winning + losing cannot exceed total (breakeven trades exist)
+        if self.winning_trades + self.losing_trades > self.total_trades:
+            raise ValueError(
+                f"winning_trades ({self.winning_trades}) + losing_trades ({self.losing_trades}) "
+                f"cannot exceed total_trades ({self.total_trades})"
+            )
+        return self
+
 
 class TradingPerformanceResult(BaseModel):
     """Complete trading performance analysis result."""
@@ -187,6 +220,31 @@ class RankingsResult(BaseModel):
     # Metadata
     context: str | None = Field(default=None, description="User-provided context label")
     num_agents: int = Field(ge=1, description="Number of agents compared")
+
+    @model_validator(mode="after")
+    def check_leaders_exist(self) -> RankingsResult:
+        """Validate that all leader names exist in rankings."""
+        names = {r.name for r in self.rankings}
+
+        if self.leader not in names:
+            raise ValueError(f"leader '{self.leader}' not found in rankings")
+        if self.highest_return not in names:
+            raise ValueError(f"highest_return '{self.highest_return}' not found in rankings")
+        if self.lowest_volatility not in names:
+            raise ValueError(f"lowest_volatility '{self.lowest_volatility}' not found in rankings")
+        if self.best_risk_adjusted not in names:
+            raise ValueError(
+                f"best_risk_adjusted '{self.best_risk_adjusted}' not found in rankings"
+            )
+        if self.lowest_drawdown not in names:
+            raise ValueError(f"lowest_drawdown '{self.lowest_drawdown}' not found in rankings")
+
+        # Validate num_agents matches rankings length
+        if len(self.rankings) != self.num_agents:
+            raise ValueError(
+                f"num_agents ({self.num_agents}) must match rankings length ({len(self.rankings)})"
+            )
+        return self
 
     def to_json_str(self) -> str:
         """Serialize to JSON string for API responses."""

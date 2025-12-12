@@ -218,3 +218,58 @@ class TestAnomalyNarrative:
         # Should highlight extreme outliers
         if result.max_severity == AnomalySeverity.EXTREME:
             assert "extreme" in result.narrative.lower()
+
+
+class TestAnomalyEdgeCases:
+    """Tests for edge cases including NaN/Inf handling."""
+
+    def test_nan_values_filtered(self):
+        """Test that NaN values are filtered from input."""
+        data = [100, float("nan"), 102, 99, 500, 101]
+        result = describe_anomalies(data)
+
+        # Should process without crashing
+        assert isinstance(result, EnhancedAnomalyResult)
+        # Narrative should not contain "nan"
+        assert "nan" not in result.narrative.lower()
+
+    def test_inf_values_filtered(self):
+        """Test that Inf values are filtered from input."""
+        data = [100, float("inf"), 102, float("-inf"), 500, 101]
+        result = describe_anomalies(data)
+
+        # Should process without crashing
+        assert isinstance(result, EnhancedAnomalyResult)
+        # Narrative should not contain "inf"
+        assert "inf" not in result.narrative.lower()
+
+    def test_mixed_nan_inf_values(self):
+        """Test handling of mixed NaN and Inf values."""
+        data = [100, float("nan"), float("inf"), 99, float("-inf"), 101, float("nan")]
+        result = describe_anomalies(data)
+
+        assert isinstance(result, EnhancedAnomalyResult)
+
+    def test_all_nan_returns_insufficient_data(self):
+        """Test that all-NaN data returns insufficient data message."""
+        data = [float("nan")] * 10
+        result = describe_anomalies(data)
+
+        assert isinstance(result, EnhancedAnomalyResult)
+        assert "insufficient" in result.narrative.lower() or result.total_anomalies == 0
+
+    def test_numpy_nan_handling(self):
+        """Test handling of numpy NaN values."""
+        data = np.array([100, np.nan, 102, 99, 500, 101])
+        result = describe_anomalies(data)
+
+        assert isinstance(result, EnhancedAnomalyResult)
+        assert "nan" not in result.narrative.lower()
+
+    def test_numpy_inf_handling(self):
+        """Test handling of numpy Inf values."""
+        data = np.array([100, np.inf, 102, -np.inf, 500, 101])
+        result = describe_anomalies(data)
+
+        assert isinstance(result, EnhancedAnomalyResult)
+        assert "inf" not in result.narrative.lower()

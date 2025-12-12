@@ -205,9 +205,15 @@ def describe_drawdown(
     """
     # Convert to numpy array
     if isinstance(equity, list):
-        equity = np.array(equity, dtype=float)
+        equity_arr = np.array(equity, dtype=float)
+    else:
+        equity_arr = equity
 
-    if len(equity) < 2:
+    # Filter out NaN and Inf values
+    valid_mask = np.isfinite(equity_arr)
+    equity_arr = equity_arr[valid_mask]
+
+    if len(equity_arr) < 2:
         return DrawdownResult(
             max_drawdown_pct=0.0,
             max_drawdown_duration=0,
@@ -223,8 +229,8 @@ def describe_drawdown(
         )
 
     # Calculate running maximum and drawdown series
-    running_max = np.maximum.accumulate(equity)
-    drawdown_series = (running_max - equity) / running_max * 100
+    running_max = np.maximum.accumulate(equity_arr)
+    drawdown_series = (running_max - equity_arr) / running_max * 100
 
     # Max drawdown
     max_dd_pct = float(np.max(drawdown_series))
@@ -233,7 +239,7 @@ def describe_drawdown(
     current_dd_pct = float(drawdown_series[-1])
 
     # Find all drawdown periods
-    periods = _find_drawdown_periods(equity, min_depth_pct)
+    periods = _find_drawdown_periods(equity_arr, min_depth_pct)
 
     # Calculate aggregate stats
     num_drawdowns = len(periods)
@@ -255,7 +261,7 @@ def describe_drawdown(
 
     # Classifications
     severity = _classify_severity(max_dd_pct)
-    recovery_state = _determine_recovery_state(equity, current_dd_pct)
+    recovery_state = _determine_recovery_state(equity_arr, current_dd_pct)
 
     # Generate narrative
     narrative = _generate_drawdown_narrative(

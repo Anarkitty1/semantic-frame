@@ -9,8 +9,19 @@ Key functions:
 - describe_rankings: Compare multiple trading agents/strategies
 - describe_anomalies: Enhanced anomaly detection with severity and type classification
 - describe_windows: Multi-timeframe analysis
+- describe_regime: Market regime detection and classification
+- describe_allocation: Position sizing and portfolio allocation suggestions
 """
 
+from semantic_frame.trading.allocation import (
+    AllocationMethod,
+    AllocationResult,
+    AssetAnalysis,
+    CorrelationInsight,
+    DiversificationLevel,
+    RiskLevel,
+    describe_allocation,
+)
 from semantic_frame.trading.anomalies import (
     AnomalyFrequency,
     AnomalySeverity,
@@ -29,6 +40,14 @@ from semantic_frame.trading.enums import (
 )
 from semantic_frame.trading.metrics import describe_trading_performance
 from semantic_frame.trading.rankings import describe_rankings
+from semantic_frame.trading.regime import (
+    RegimePeriod,
+    RegimeResult,
+    RegimeStability,
+    RegimeStrength,
+    RegimeType,
+    describe_regime,
+)
 from semantic_frame.trading.schemas import (
     AgentRanking,
     DrawdownPeriod,
@@ -52,6 +71,8 @@ __all__ = [
     "describe_rankings",
     "describe_anomalies",
     "describe_windows",
+    "describe_regime",
+    "describe_allocation",
     # Enums - Drawdown & Performance
     "DrawdownSeverity",
     "PerformanceRating",
@@ -65,6 +86,14 @@ __all__ = [
     # Enums - Windows
     "TimeframeSignal",
     "TimeframeAlignment",
+    # Enums - Regime
+    "RegimeType",
+    "RegimeStability",
+    "RegimeStrength",
+    # Enums - Allocation
+    "RiskLevel",
+    "DiversificationLevel",
+    "AllocationMethod",
     # Schemas - Drawdown & Performance
     "DrawdownPeriod",
     "DrawdownResult",
@@ -78,4 +107,11 @@ __all__ = [
     # Schemas - Windows
     "WindowAnalysis",
     "MultiWindowResult",
+    # Schemas - Regime
+    "RegimePeriod",
+    "RegimeResult",
+    # Schemas - Allocation
+    "AssetAnalysis",
+    "CorrelationInsight",
+    "AllocationResult",
 ]

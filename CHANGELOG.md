@@ -5,6 +5,42 @@ All notable changes to Semantic Frame will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2025-12-12
+
+### Added
+
+#### Market Regime Detection (`describe_regime`)
+Comprehensive regime analysis for trading agents and market state awareness:
+
+- **Regime Types**: BULL, BEAR, SIDEWAYS, RECOVERY, CORRECTION, HIGH_VOLATILITY
+- **Regime Strength**: STRONG, MODERATE, WEAK classification
+- **Stability Assessment**: VERY_STABLE, STABLE, UNSTABLE, HIGHLY_UNSTABLE
+- **Period Tracking**: Full history of regime periods with start/end indices, duration, returns
+- **Regime Metrics**:
+  - Current regime duration
+  - Total regime changes
+  - Average regime duration
+  - Regime change frequency (per 100 periods)
+  - Time distribution (% in bull/bear/sideways)
+- **Regime Trend**: Improving, deteriorating, or stable trajectory
+- **Actionable Insights**: Strategy recommendations based on current regime
+
+Example output:
+```
+"BTC/USD is in a strong bullish regime (duration: 15 periods).
+ 2 regime change(s) detected - conditions are stable.
+ Transitioned from sideways (8 periods).
+ Regime trend is improving. Conditions favor trend-following strategies."
+```
+
+#### MCP Tool for Regime Detection
+- `describe_regime` - Market regime detection and classification via MCP
+
+### Tests
+- Added 33 new tests for regime detection
+- Tests cover: regime classification, stability, periods, narratives, edge cases, MCP integration
+- Total: **1,295 tests passing with 88% coverage**
+
 ## [0.3.1] - 2025-12-12
 
 ### Added

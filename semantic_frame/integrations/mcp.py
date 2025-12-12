@@ -28,9 +28,12 @@ Claude Code Setup:
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import Any, TypeVar
+
+logger = logging.getLogger(__name__)
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -53,34 +56,60 @@ def _parse_data_input(data_str: str) -> list[float]:
     - JSON array: "[1, 2, 3, 4, 5]"
     - CSV: "1, 2, 3, 4, 5"
     - Newline-separated: "1\\n2\\n3"
+
+    Raises:
+        ValueError: With specific error message indicating parse failure reason.
     """
     data_str = data_str.strip()
 
-    # Try JSON array first
+    # Try JSON array first - if it looks like JSON, fail fast with helpful error
     if data_str.startswith("["):
         try:
-            return [float(x) for x in json.loads(data_str)]
-        except (json.JSONDecodeError, ValueError):
-            pass
+            parsed = json.loads(data_str)
+            return [float(x) for x in parsed]
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Input appears to be JSON array but failed to parse: {e.msg} "
+                f"at position {e.pos}. Input: {data_str[:50]}..."
+            ) from e
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"JSON array parsed but contains non-numeric values: {e}") from e
 
-    # Try CSV
+    # Try CSV - provide helpful error on failure
     if "," in data_str:
-        try:
-            return [float(x.strip()) for x in data_str.split(",")]
-        except ValueError:
-            pass
+        values = data_str.split(",")
+        result = []
+        for i, x in enumerate(values):
+            stripped = x.strip()
+            if not stripped:
+                raise ValueError(f"Empty value at position {i} in CSV input")
+            try:
+                result.append(float(stripped))
+            except ValueError:
+                raise ValueError(f"Non-numeric value '{stripped}' at position {i} in CSV input")
+        return result
 
-    # Try newline-separated
+    # Try newline-separated - provide helpful error on failure
     if "\n" in data_str:
-        try:
-            return [float(x.strip()) for x in data_str.split("\n") if x.strip()]
-        except ValueError:
-            pass
+        lines = [x.strip() for x in data_str.split("\n") if x.strip()]
+        result = []
+        for i, line in enumerate(lines):
+            try:
+                result.append(float(line))
+            except ValueError:
+                raise ValueError(
+                    f"Non-numeric value '{line}' at line {i + 1} in newline-separated input"
+                )
+        return result
 
-    raise ValueError(
-        f"Could not parse data input. Expected JSON array, CSV, or newline-separated numbers. "
-        f"Got: {data_str[:100]}..."
-    )
+    # Single value
+    try:
+        return [float(data_str)]
+    except ValueError:
+        raise ValueError(
+            f"Could not parse data input. Expected JSON array, CSV, or newline-separated numbers. "
+            f"Got: {data_str[:100]}{'...' if len(data_str) > 100 else ''}"
+        )
 
 
 @mcp.tool()  # type: ignore[misc]
@@ -121,6 +150,7 @@ def describe_data(data: str, context: str = "Data") -> str:
         result: str = describe_series(values, context=context, output="text")
         return result
     except (ValueError, TypeError) as e:
+        logger.warning("describe_data failed for context=%s: %s", context, e)
         return f"Error analyzing data: {str(e)}"
 
 
@@ -176,8 +206,10 @@ def describe_batch(
             return "\n\n".join(text_results)
 
     except json.JSONDecodeError as e:
+        logger.warning("describe_batch JSON parse failed: %s", e)
         return f"Error parsing datasets JSON: {str(e)}"
     except (ValueError, TypeError) as e:
+        logger.warning("describe_batch failed: %s", e)
         return f"Error analyzing batch data: {str(e)}"
 
 
@@ -201,6 +233,7 @@ def describe_json(data: str, context: str = "Data") -> str:
         result = describe_series(values, context=context, output="json")
         return json.dumps(result, indent=2)
     except (ValueError, TypeError) as e:
+        logger.warning("describe_json failed for context=%s: %s", context, e)
         return json.dumps({"error": str(e)})
 
 
@@ -240,6 +273,7 @@ def describe_drawdown(equity: str, context: str = "Equity") -> str:
         result = _describe_drawdown(values, context=context)
         return result.narrative
     except (ValueError, TypeError) as e:
+        logger.warning("describe_drawdown failed for context=%s: %s", context, e)
         return f"Error analyzing drawdown: {str(e)}"
 
 
@@ -276,6 +310,7 @@ def describe_trading_performance(trades: str, context: str = "Strategy") -> str:
         result = _describe_perf(values, context=context)
         return result.narrative
     except (ValueError, TypeError) as e:
+        logger.warning("describe_trading_performance failed for context=%s: %s", context, e)
         return f"Error analyzing trading performance: {str(e)}"
 
 
@@ -317,8 +352,10 @@ def describe_rankings(equity_curves: str, context: str = "agents") -> str:
         result = _describe_rankings({k: list(v) for k, v in parsed_curves.items()}, context=context)
         return result.narrative
     except json.JSONDecodeError as e:
+        logger.warning("describe_rankings JSON parse failed: %s", e)
         return f"Error parsing equity curves JSON: {str(e)}"
     except (ValueError, TypeError) as e:
+        logger.warning("describe_rankings failed for context=%s: %s", context, e)
         return f"Error analyzing rankings: {str(e)}"
 
 
@@ -358,6 +395,7 @@ def describe_anomalies(
         result = _describe_anomalies(values, context=context, is_pnl_data=is_pnl_data)
         return result.narrative
     except (ValueError, TypeError) as e:
+        logger.warning("describe_anomalies failed for context=%s: %s", context, e)
         return f"Error analyzing anomalies: {str(e)}"
 
 
@@ -412,7 +450,112 @@ def describe_windows(
         result = _describe_windows(values, windows=windows_arg, context=context)
         return result.narrative
     except (ValueError, TypeError) as e:
+        logger.warning("describe_windows failed for context=%s: %s", context, e)
         return f"Error analyzing windows: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_regime(
+    returns: str,
+    context: str = "Market",
+    lookback: int = 20,
+) -> str:
+    """Detect and classify market regimes from return data.
+
+    Use this tool when you need to understand the current market regime
+    (bull, bear, sideways, recovery, correction) and regime stability.
+
+    Args:
+        returns: Period returns as JSON array, CSV, or newline-separated.
+                 Values should be decimals (e.g., 0.01 = 1% return).
+                 Example: "[0.01, 0.02, -0.05, -0.08, 0.03, 0.04]"
+        context: Label for the data (e.g., "BTC/USD", "S&P 500").
+        lookback: Lookback window for regime classification (default 20).
+
+    Returns:
+        Regime analysis including:
+        - Current regime (bull/bear/sideways/recovery/correction/high_volatility)
+        - Regime strength (strong/moderate/weak)
+        - Regime stability (very_stable to highly_unstable)
+        - Number of regime changes and average duration
+        - Actionable insights
+
+    Example:
+        Input: returns="[0.01, 0.02, 0.01, -0.05, -0.08, -0.03, 0.02, 0.03, 0.04]"
+        Output: "BTC is in a moderate recovery regime (duration: 3 periods).
+                 2 regime change(s) detected - conditions are unstable.
+                 Early signs of recovery - consider gradual re-entry."
+    """
+    from semantic_frame.trading import describe_regime as _describe_regime
+
+    try:
+        values = _parse_data_input(returns)
+        result = _describe_regime(values, context=context, lookback=lookback)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_regime failed for context=%s: %s", context, e)
+        return f"Error analyzing regime: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_allocation(
+    assets: str,
+    context: str = "Portfolio",
+    method: str = "risk_parity",
+    target_volatility: float | None = None,
+) -> str:
+    """Analyze multi-asset portfolio and suggest allocation weights.
+
+    DISCLAIMER: This provides educational analysis only, NOT financial advice.
+
+    Use this tool when you need position sizing or portfolio allocation
+    suggestions based on risk analysis and diversification.
+
+    Args:
+        assets: JSON object mapping asset names to price arrays.
+                Example: '{"BTC": [100, 105, 102], "ETH": [50, 52, 48]}'
+        context: Label for the portfolio (e.g., "Crypto Portfolio").
+        method: Allocation method - "equal_weight", "risk_parity", "min_variance", "target_vol".
+        target_volatility: Target portfolio volatility (%) for target_vol method.
+
+    Returns:
+        Allocation analysis including:
+        - Suggested weights for each asset
+        - Portfolio expected return and volatility
+        - Risk level classification
+        - Diversification score and correlation insights
+        - Educational disclaimer
+
+    Example:
+        Input: assets='{"BTC": [100,105,102,108], "ETH": [50,52,48,55]}'
+        Output: "Portfolio analysis for Crypto: Suggested allocation: BTC (45%), ETH (55%).
+                 Expected return: 85.2%, volatility: 42.1% (high risk)."
+    """
+    from semantic_frame.trading import describe_allocation as _describe_allocation
+
+    try:
+        assets_dict = json.loads(assets)
+        # Parse any string values to float lists
+        parsed_assets: dict[str, list[float]] = {}
+        for name, values in assets_dict.items():
+            if isinstance(values, str):
+                parsed_assets[name] = list(_parse_data_input(values))
+            else:
+                parsed_assets[name] = [float(v) for v in values]
+
+        result = _describe_allocation(
+            {k: list(v) for k, v in parsed_assets.items()},
+            context=context,
+            method=method,
+            target_volatility=target_volatility,
+        )
+        # Include disclaimer in output
+        return f"{result.narrative}\n\n⚠️ {result.disclaimer}"
+    except json.JSONDecodeError as e:
+        return f"Error parsing assets JSON: {str(e)}"
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_allocation failed for context=%s: %s", context, e)
+        return f"Error analyzing allocation: {str(e)}"
 
 
 # =============================================================================
@@ -482,7 +625,8 @@ def wrap_for_semantic_output(
             try:
                 narrative: str = describe_series(data, context=context, output="text")
                 return narrative
-            except (ValueError, TypeError, RuntimeError) as e:
+            except (ValueError, TypeError) as e:
+                logger.warning("wrap_for_semantic_output failed for %s: %s", func.__name__, e)
                 return f"Error in semantic conversion: {e}. Original: {result}"
 
         return wrapper  # type: ignore
@@ -530,6 +674,7 @@ def create_semantic_tool(
             result: str = describe_series(data, context=ctx, output="text")
             return result
         except (ValueError, TypeError) as e:
+            logger.warning("create_semantic_tool %s failed: %s", name, e)
             return f"Error: {str(e)}"
 
     semantic_tool.__name__ = name
