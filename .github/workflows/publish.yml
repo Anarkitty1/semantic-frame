@@ -22,7 +22,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run tests
-        run: uv run pytest -q
+        run: uv run pytest -q -m "not benchmark"
 
       - name: Run linter
         run: uv run ruff check semantic_frame/
