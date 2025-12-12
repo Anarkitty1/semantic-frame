@@ -137,7 +137,7 @@ def get_crewai_tool() -> Any:
     # Use the cached tool decorator
     tool = _tool_decorator
 
-    @tool("Semantic Data Analysis")  # type: ignore[misc]
+    @tool("Semantic Data Analysis")  # type: ignore[misc,untyped-decorator]
     def analyze_data(data: str, context: str = "Data") -> str:
         """Analyze numerical data for trends, anomalies, and patterns.
 

@@ -29,7 +29,7 @@ For Advanced Tool Use:
     >>> tool = get_advanced_tool()  # All beta features enabled
 """
 
-from semantic_frame.main import describe_dataframe, describe_series
+from semantic_frame.main import ArrayLike, describe_dataframe, describe_series
 
 # Re-export trading module functions for convenience
 from semantic_frame.trading import (
@@ -61,7 +61,7 @@ __all__ = [
 ]
 
 
-def describe_data(data: object, context: str = "Data") -> str:
+def describe_data(data: ArrayLike, context: str = "Data") -> str:
     """Analyze numerical data and return a semantic description.
 
     This is a convenience wrapper around describe_series that accepts
