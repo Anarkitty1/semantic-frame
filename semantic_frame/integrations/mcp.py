@@ -205,6 +205,217 @@ def describe_json(data: str, context: str = "Data") -> str:
 
 
 # =============================================================================
+# Trading Analysis Tools
+# =============================================================================
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_drawdown(equity: str, context: str = "Equity") -> str:
+    """Analyze drawdowns in an equity curve.
+
+    Use this tool when you have equity/balance data and need to understand
+    drawdown risk, recovery patterns, and current drawdown status.
+
+    Args:
+        equity: Cumulative equity values as JSON array, CSV, or newline-separated.
+               Example: "[10000, 10500, 10200, 9800, 9500, 10000, 10800]"
+        context: Label for the strategy (e.g., "BTC strategy", "CLAUDE agent").
+
+    Returns:
+        Semantic description of drawdown characteristics including:
+        - Maximum drawdown percentage and duration
+        - Current drawdown status (at high, recovering, in drawdown)
+        - Severity classification (minimal/moderate/significant/severe/catastrophic)
+        - Number of drawdown periods and recovery stats
+
+    Example:
+        Input: equity="[10000, 10500, 10200, 9800, 9500, 10000, 10800]", context="BTC strategy"
+        Output: "The BTC strategy has moderate drawdown risk (max 9.5% over 3 periods).
+                 Currently at equity high."
+    """
+    from semantic_frame.trading import describe_drawdown as _describe_drawdown
+
+    try:
+        values = _parse_data_input(equity)
+        result = _describe_drawdown(values, context=context)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        return f"Error analyzing drawdown: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_trading_performance(trades: str, context: str = "Strategy") -> str:
+    """Analyze trading performance from a series of trade PnLs.
+
+    Use this tool when you have trade results and need to understand
+    win rate, profit factor, risk-adjusted returns, and consistency.
+
+    Args:
+        trades: PnL per trade as JSON array, CSV, or newline-separated.
+               Positive = profit, negative = loss.
+               Example: "[100, -50, 75, -25, 150, -30, 80]"
+        context: Label for the strategy (e.g., "CLAUDE agent", "Momentum strategy").
+
+    Returns:
+        Semantic description of trading performance including:
+        - Win rate and profit factor
+        - Risk-adjusted metrics (Sharpe, Sortino if calculable)
+        - Performance rating (excellent/good/average/below_average/poor)
+        - Risk profile classification
+        - Streak analysis and consistency rating
+
+    Example:
+        Input: trades="[100, -50, 75, -25, 150, -30, 80]", context="CLAUDE"
+        Output: "CLAUDE shows good performance with 57% win rate and 2.86x profit factor.
+                 Risk profile: moderate."
+    """
+    from semantic_frame.trading import describe_trading_performance as _describe_perf
+
+    try:
+        values = _parse_data_input(trades)
+        result = _describe_perf(values, context=context)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        return f"Error analyzing trading performance: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_rankings(equity_curves: str, context: str = "agents") -> str:
+    """Compare multiple agents/strategies and produce rankings.
+
+    Use this tool when you have equity curves from multiple trading agents
+    and need to compare their performance across multiple dimensions.
+
+    Args:
+        equity_curves: JSON object mapping names to equity arrays.
+                      Example: '{"CLAUDE": [10000, 11000, 12000], "GROK": [10000, 12000, 11000]}'
+        context: Label for what's being compared (e.g., "AI agents", "strategies").
+
+    Returns:
+        Comparative ranking analysis including:
+        - Overall leader (composite score)
+        - Best by return, risk-adjusted, volatility, and drawdown
+        - Per-agent rankings across all dimensions
+
+    Example:
+        Input: equity_curves='{"CLAUDE": [10000, 10500, 11000], "GROK": [10000, 12000, 9000]}'
+        Output: "Comparing 2 AI agents: CLAUDE leads overall with 10.0% return.
+                 GROK has highest raw return (20.0%). CLAUDE is most stable..."
+    """
+    from semantic_frame.trading import describe_rankings as _describe_rankings
+
+    try:
+        curves_dict = json.loads(equity_curves)
+        # Convert any string values to float lists
+        parsed_curves = {}
+        for name, values in curves_dict.items():
+            if isinstance(values, str):
+                parsed_curves[name] = _parse_data_input(values)
+            else:
+                parsed_curves[name] = [float(v) for v in values]
+
+        result = _describe_rankings({k: list(v) for k, v in parsed_curves.items()}, context=context)
+        return result.narrative
+    except json.JSONDecodeError as e:
+        return f"Error parsing equity curves JSON: {str(e)}"
+    except (ValueError, TypeError) as e:
+        return f"Error analyzing rankings: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_anomalies(
+    data: str,
+    context: str = "Data",
+    is_pnl_data: bool = False,
+) -> str:
+    """Enhanced anomaly detection with severity and type classification.
+
+    Use this tool when you need detailed analysis of outliers in data,
+    including severity levels, anomaly types, and contextual descriptions.
+
+    Args:
+        data: Numerical values as JSON array, CSV, or newline-separated.
+              Example: "[100, 102, 99, 500, 101, 98, -200]"
+        context: Label for the data (e.g., "Trade PnL", "Server Latency").
+        is_pnl_data: If True, uses gain/loss terminology instead of spike/drop.
+
+    Returns:
+        Enhanced anomaly analysis including:
+        - Each anomaly with severity (mild/moderate/severe/extreme)
+        - Anomaly type (spike/drop/gain/loss)
+        - Contextual descriptions
+        - Frequency classification (rare/occasional/frequent/pervasive)
+
+    Example:
+        Input: data="[100, 102, 99, 500, 101, -200]", context="Trade PnL", is_pnl_data=True
+        Output: "The Trade PnL has occasional anomalies (2 detected in 6 points).
+                 Most significant: index 3 (value: 500.00, z-score: 2.3, exceptional profit)."
+    """
+    from semantic_frame.trading import describe_anomalies as _describe_anomalies
+
+    try:
+        values = _parse_data_input(data)
+        result = _describe_anomalies(values, context=context, is_pnl_data=is_pnl_data)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        return f"Error analyzing anomalies: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_windows(
+    data: str,
+    windows: str = "10,50,200",
+    context: str = "Data",
+) -> str:
+    """Multi-timeframe analysis across different time windows.
+
+    Use this tool when you need to analyze data across multiple timeframes
+    to compare short-term vs long-term trends and filter noise from signal.
+
+    Args:
+        data: Price/value data as JSON array, CSV, or newline-separated.
+              Most recent data at the end.
+        windows: Comma-separated window sizes (e.g., "10,50,200" or "1h,4h,1d").
+        context: Label for the data (e.g., "BTC/USD", "CPU metrics").
+
+    Returns:
+        Multi-timeframe analysis including:
+        - Per-window trend and volatility
+        - Timeframe alignment (all bullish, all bearish, mixed, diverging)
+        - Noise level assessment
+        - Suggested positioning
+
+    Example:
+        Input: data="[100,102,105,103,108,110,112,109,115,118,120]", windows="5,10"
+        Output: "Multi-timeframe analysis: all timeframes bullish.
+                 Windows: 5 rising (+4.3%), 10 rising (+20.0%). Noise level: low."
+    """
+    from semantic_frame.trading import describe_windows as _describe_windows
+
+    try:
+        values = _parse_data_input(data)
+        # Parse windows - can be comma-separated ints or strings
+        window_list: list[int | str] = []
+        for w in windows.split(","):
+            w = w.strip()
+            if w.isdigit():
+                window_list.append(int(w))
+            else:
+                window_list.append(w)
+
+        # Convert to uniform type for type checker
+        windows_arg: list[int] | list[str] | None = None
+        if all(isinstance(w, int) for w in window_list):
+            windows_arg = [int(w) for w in window_list]
+        else:
+            windows_arg = [str(w) for w in window_list]
+        result = _describe_windows(values, windows=windows_arg, context=context)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        return f"Error analyzing windows: {str(e)}"
+
+
+# =============================================================================
 # MCP Wrapper Utility
 # =============================================================================
 
