@@ -1,12 +1,12 @@
 [project]
 name = "semantic-frame"
-version = "0.2.1"
+version = "0.4.0"
 description = "Semantic compression layer for numerical data - token-efficient LLM context with Anthropic Advanced Tool Use support"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
-    { name = "Emma", email = "emma@example.com" }
+    { name = "Anarkitty1", email = "emma@example.com" }
 ]
 keywords = [
     "semantic",
@@ -21,6 +21,9 @@ keywords = [
     "tool-use",
     "langchain",
     "crewai",
+    "trading",
+    "drawdown",
+    "backtesting",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -35,11 +35,22 @@ print(describe_series(data, context="Server Latency"))
 *   **Deterministic Math**: No LLM hallucinations. Math is done by NumPy.
 *   **Framework Agnostic**: Works with Pandas, Polars, NumPy, and Python lists.
 *   **Agent Ready**: Integrates with LangChain, CrewAI, and ElizaOS.
+*   **Trading Module**: Specialized tools for trading agents and portfolio analysis.
 
 ## Installation
 
 ```bash
 pip install semantic-frame
 ```
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](getting-started.md) | Quick introduction and basic usage |
+| [Trading Module](trading-module.md) | Trading-specific analysis tools |
+| [MCP Integration](integrations.md) | Model Context Protocol setup |
+| [Claude Integration](claude-integration.md) | Using with Anthropic's Claude |
+| [API Reference](api.md) | Full API documentation |
 
 [Get Started](getting-started.md){ .md-button .md-button--primary }

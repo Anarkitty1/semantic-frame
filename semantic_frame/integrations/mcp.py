@@ -28,9 +28,12 @@ Claude Code Setup:
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import Any, TypeVar
+
+logger = logging.getLogger(__name__)
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -53,34 +56,60 @@ def _parse_data_input(data_str: str) -> list[float]:
     - JSON array: "[1, 2, 3, 4, 5]"
     - CSV: "1, 2, 3, 4, 5"
     - Newline-separated: "1\\n2\\n3"
+
+    Raises:
+        ValueError: With specific error message indicating parse failure reason.
     """
     data_str = data_str.strip()
 
-    # Try JSON array first
+    # Try JSON array first - if it looks like JSON, fail fast with helpful error
     if data_str.startswith("["):
         try:
-            return [float(x) for x in json.loads(data_str)]
-        except (json.JSONDecodeError, ValueError):
-            pass
+            parsed = json.loads(data_str)
+            return [float(x) for x in parsed]
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Input appears to be JSON array but failed to parse: {e.msg} "
+                f"at position {e.pos}. Input: {data_str[:50]}..."
+            ) from e
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"JSON array parsed but contains non-numeric values: {e}") from e
 
-    # Try CSV
+    # Try CSV - provide helpful error on failure
     if "," in data_str:
-        try:
-            return [float(x.strip()) for x in data_str.split(",")]
-        except ValueError:
-            pass
+        values = data_str.split(",")
+        result = []
+        for i, x in enumerate(values):
+            stripped = x.strip()
+            if not stripped:
+                raise ValueError(f"Empty value at position {i} in CSV input")
+            try:
+                result.append(float(stripped))
+            except ValueError:
+                raise ValueError(f"Non-numeric value '{stripped}' at position {i} in CSV input")
+        return result
 
-    # Try newline-separated
+    # Try newline-separated - provide helpful error on failure
     if "\n" in data_str:
-        try:
-            return [float(x.strip()) for x in data_str.split("\n") if x.strip()]
-        except ValueError:
-            pass
+        lines = [x.strip() for x in data_str.split("\n") if x.strip()]
+        result = []
+        for i, line in enumerate(lines):
+            try:
+                result.append(float(line))
+            except ValueError:
+                raise ValueError(
+                    f"Non-numeric value '{line}' at line {i + 1} in newline-separated input"
+                )
+        return result
 
-    raise ValueError(
-        f"Could not parse data input. Expected JSON array, CSV, or newline-separated numbers. "
-        f"Got: {data_str[:100]}..."
-    )
+    # Single value
+    try:
+        return [float(data_str)]
+    except ValueError:
+        raise ValueError(
+            f"Could not parse data input. Expected JSON array, CSV, or newline-separated numbers. "
+            f"Got: {data_str[:100]}{'...' if len(data_str) > 100 else ''}"
+        )
 
 
 @mcp.tool()  # type: ignore[misc]
@@ -121,6 +150,7 @@ def describe_data(data: str, context: str = "Data") -> str:
         result: str = describe_series(values, context=context, output="text")
         return result
     except (ValueError, TypeError) as e:
+        logger.warning("describe_data failed for context=%s: %s", context, e)
         return f"Error analyzing data: {str(e)}"
 
 
@@ -176,8 +206,10 @@ def describe_batch(
             return "\n\n".join(text_results)
 
     except json.JSONDecodeError as e:
+        logger.warning("describe_batch JSON parse failed: %s", e)
         return f"Error parsing datasets JSON: {str(e)}"
     except (ValueError, TypeError) as e:
+        logger.warning("describe_batch failed: %s", e)
         return f"Error analyzing batch data: {str(e)}"
 
 
@@ -201,7 +233,329 @@ def describe_json(data: str, context: str = "Data") -> str:
         result = describe_series(values, context=context, output="json")
         return json.dumps(result, indent=2)
     except (ValueError, TypeError) as e:
+        logger.warning("describe_json failed for context=%s: %s", context, e)
         return json.dumps({"error": str(e)})
+
+
+# =============================================================================
+# Trading Analysis Tools
+# =============================================================================
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_drawdown(equity: str, context: str = "Equity") -> str:
+    """Analyze drawdowns in an equity curve.
+
+    Use this tool when you have equity/balance data and need to understand
+    drawdown risk, recovery patterns, and current drawdown status.
+
+    Args:
+        equity: Cumulative equity values as JSON array, CSV, or newline-separated.
+               Example: "[10000, 10500, 10200, 9800, 9500, 10000, 10800]"
+        context: Label for the strategy (e.g., "BTC strategy", "CLAUDE agent").
+
+    Returns:
+        Semantic description of drawdown characteristics including:
+        - Maximum drawdown percentage and duration
+        - Current drawdown status (at high, recovering, in drawdown)
+        - Severity classification (minimal/moderate/significant/severe/catastrophic)
+        - Number of drawdown periods and recovery stats
+
+    Example:
+        Input: equity="[10000, 10500, 10200, 9800, 9500, 10000, 10800]", context="BTC strategy"
+        Output: "The BTC strategy has moderate drawdown risk (max 9.5% over 3 periods).
+                 Currently at equity high."
+    """
+    from semantic_frame.trading import describe_drawdown as _describe_drawdown
+
+    try:
+        values = _parse_data_input(equity)
+        result = _describe_drawdown(values, context=context)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_drawdown failed for context=%s: %s", context, e)
+        return f"Error analyzing drawdown: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_trading_performance(trades: str, context: str = "Strategy") -> str:
+    """Analyze trading performance from a series of trade PnLs.
+
+    Use this tool when you have trade results and need to understand
+    win rate, profit factor, risk-adjusted returns, and consistency.
+
+    Args:
+        trades: PnL per trade as JSON array, CSV, or newline-separated.
+               Positive = profit, negative = loss.
+               Example: "[100, -50, 75, -25, 150, -30, 80]"
+        context: Label for the strategy (e.g., "CLAUDE agent", "Momentum strategy").
+
+    Returns:
+        Semantic description of trading performance including:
+        - Win rate and profit factor
+        - Risk-adjusted metrics (Sharpe, Sortino if calculable)
+        - Performance rating (excellent/good/average/below_average/poor)
+        - Risk profile classification
+        - Streak analysis and consistency rating
+
+    Example:
+        Input: trades="[100, -50, 75, -25, 150, -30, 80]", context="CLAUDE"
+        Output: "CLAUDE shows good performance with 57% win rate and 2.86x profit factor.
+                 Risk profile: moderate."
+    """
+    from semantic_frame.trading import describe_trading_performance as _describe_perf
+
+    try:
+        values = _parse_data_input(trades)
+        result = _describe_perf(values, context=context)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_trading_performance failed for context=%s: %s", context, e)
+        return f"Error analyzing trading performance: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_rankings(equity_curves: str, context: str = "agents") -> str:
+    """Compare multiple agents/strategies and produce rankings.
+
+    Use this tool when you have equity curves from multiple trading agents
+    and need to compare their performance across multiple dimensions.
+
+    Args:
+        equity_curves: JSON object mapping names to equity arrays.
+                      Example: '{"CLAUDE": [10000, 11000, 12000], "GROK": [10000, 12000, 11000]}'
+        context: Label for what's being compared (e.g., "AI agents", "strategies").
+
+    Returns:
+        Comparative ranking analysis including:
+        - Overall leader (composite score)
+        - Best by return, risk-adjusted, volatility, and drawdown
+        - Per-agent rankings across all dimensions
+
+    Example:
+        Input: equity_curves='{"CLAUDE": [10000, 10500, 11000], "GROK": [10000, 12000, 9000]}'
+        Output: "Comparing 2 AI agents: CLAUDE leads overall with 10.0% return.
+                 GROK has highest raw return (20.0%). CLAUDE is most stable..."
+    """
+    from semantic_frame.trading import describe_rankings as _describe_rankings
+
+    try:
+        curves_dict = json.loads(equity_curves)
+        # Convert any string values to float lists
+        parsed_curves = {}
+        for name, values in curves_dict.items():
+            if isinstance(values, str):
+                parsed_curves[name] = _parse_data_input(values)
+            else:
+                parsed_curves[name] = [float(v) for v in values]
+
+        result = _describe_rankings({k: list(v) for k, v in parsed_curves.items()}, context=context)
+        return result.narrative
+    except json.JSONDecodeError as e:
+        logger.warning("describe_rankings JSON parse failed: %s", e)
+        return f"Error parsing equity curves JSON: {str(e)}"
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_rankings failed for context=%s: %s", context, e)
+        return f"Error analyzing rankings: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_anomalies(
+    data: str,
+    context: str = "Data",
+    is_pnl_data: bool = False,
+) -> str:
+    """Enhanced anomaly detection with severity and type classification.
+
+    Use this tool when you need detailed analysis of outliers in data,
+    including severity levels, anomaly types, and contextual descriptions.
+
+    Args:
+        data: Numerical values as JSON array, CSV, or newline-separated.
+              Example: "[100, 102, 99, 500, 101, 98, -200]"
+        context: Label for the data (e.g., "Trade PnL", "Server Latency").
+        is_pnl_data: If True, uses gain/loss terminology instead of spike/drop.
+
+    Returns:
+        Enhanced anomaly analysis including:
+        - Each anomaly with severity (mild/moderate/severe/extreme)
+        - Anomaly type (spike/drop/gain/loss)
+        - Contextual descriptions
+        - Frequency classification (rare/occasional/frequent/pervasive)
+
+    Example:
+        Input: data="[100, 102, 99, 500, 101, -200]", context="Trade PnL", is_pnl_data=True
+        Output: "The Trade PnL has occasional anomalies (2 detected in 6 points).
+                 Most significant: index 3 (value: 500.00, z-score: 2.3, exceptional profit)."
+    """
+    from semantic_frame.trading import describe_anomalies as _describe_anomalies
+
+    try:
+        values = _parse_data_input(data)
+        result = _describe_anomalies(values, context=context, is_pnl_data=is_pnl_data)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_anomalies failed for context=%s: %s", context, e)
+        return f"Error analyzing anomalies: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_windows(
+    data: str,
+    windows: str = "10,50,200",
+    context: str = "Data",
+) -> str:
+    """Multi-timeframe analysis across different time windows.
+
+    Use this tool when you need to analyze data across multiple timeframes
+    to compare short-term vs long-term trends and filter noise from signal.
+
+    Args:
+        data: Price/value data as JSON array, CSV, or newline-separated.
+              Most recent data at the end.
+        windows: Comma-separated window sizes (e.g., "10,50,200" or "1h,4h,1d").
+        context: Label for the data (e.g., "BTC/USD", "CPU metrics").
+
+    Returns:
+        Multi-timeframe analysis including:
+        - Per-window trend and volatility
+        - Timeframe alignment (all bullish, all bearish, mixed, diverging)
+        - Noise level assessment
+        - Suggested positioning
+
+    Example:
+        Input: data="[100,102,105,103,108,110,112,109,115,118,120]", windows="5,10"
+        Output: "Multi-timeframe analysis: all timeframes bullish.
+                 Windows: 5 rising (+4.3%), 10 rising (+20.0%). Noise level: low."
+    """
+    from semantic_frame.trading import describe_windows as _describe_windows
+
+    try:
+        values = _parse_data_input(data)
+        # Parse windows - can be comma-separated ints or strings
+        window_list: list[int | str] = []
+        for w in windows.split(","):
+            w = w.strip()
+            if w.isdigit():
+                window_list.append(int(w))
+            else:
+                window_list.append(w)
+
+        # Convert to uniform type for type checker
+        windows_arg: list[int] | list[str] | None = None
+        if all(isinstance(w, int) for w in window_list):
+            windows_arg = [int(w) for w in window_list]
+        else:
+            windows_arg = [str(w) for w in window_list]
+        result = _describe_windows(values, windows=windows_arg, context=context)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_windows failed for context=%s: %s", context, e)
+        return f"Error analyzing windows: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_regime(
+    returns: str,
+    context: str = "Market",
+    lookback: int = 20,
+) -> str:
+    """Detect and classify market regimes from return data.
+
+    Use this tool when you need to understand the current market regime
+    (bull, bear, sideways, recovery, correction) and regime stability.
+
+    Args:
+        returns: Period returns as JSON array, CSV, or newline-separated.
+                 Values should be decimals (e.g., 0.01 = 1% return).
+                 Example: "[0.01, 0.02, -0.05, -0.08, 0.03, 0.04]"
+        context: Label for the data (e.g., "BTC/USD", "S&P 500").
+        lookback: Lookback window for regime classification (default 20).
+
+    Returns:
+        Regime analysis including:
+        - Current regime (bull/bear/sideways/recovery/correction/high_volatility)
+        - Regime strength (strong/moderate/weak)
+        - Regime stability (very_stable to highly_unstable)
+        - Number of regime changes and average duration
+        - Actionable insights
+
+    Example:
+        Input: returns="[0.01, 0.02, 0.01, -0.05, -0.08, -0.03, 0.02, 0.03, 0.04]"
+        Output: "BTC is in a moderate recovery regime (duration: 3 periods).
+                 2 regime change(s) detected - conditions are unstable.
+                 Early signs of recovery - consider gradual re-entry."
+    """
+    from semantic_frame.trading import describe_regime as _describe_regime
+
+    try:
+        values = _parse_data_input(returns)
+        result = _describe_regime(values, context=context, lookback=lookback)
+        return result.narrative
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_regime failed for context=%s: %s", context, e)
+        return f"Error analyzing regime: {str(e)}"
+
+
+@mcp.tool()  # type: ignore[misc]
+def describe_allocation(
+    assets: str,
+    context: str = "Portfolio",
+    method: str = "risk_parity",
+    target_volatility: float | None = None,
+) -> str:
+    """Analyze multi-asset portfolio and suggest allocation weights.
+
+    DISCLAIMER: This provides educational analysis only, NOT financial advice.
+
+    Use this tool when you need position sizing or portfolio allocation
+    suggestions based on risk analysis and diversification.
+
+    Args:
+        assets: JSON object mapping asset names to price arrays.
+                Example: '{"BTC": [100, 105, 102], "ETH": [50, 52, 48]}'
+        context: Label for the portfolio (e.g., "Crypto Portfolio").
+        method: Allocation method - "equal_weight", "risk_parity", "min_variance", "target_vol".
+        target_volatility: Target portfolio volatility (%) for target_vol method.
+
+    Returns:
+        Allocation analysis including:
+        - Suggested weights for each asset
+        - Portfolio expected return and volatility
+        - Risk level classification
+        - Diversification score and correlation insights
+        - Educational disclaimer
+
+    Example:
+        Input: assets='{"BTC": [100,105,102,108], "ETH": [50,52,48,55]}'
+        Output: "Portfolio analysis for Crypto: Suggested allocation: BTC (45%), ETH (55%).
+                 Expected return: 85.2%, volatility: 42.1% (high risk)."
+    """
+    from semantic_frame.trading import describe_allocation as _describe_allocation
+
+    try:
+        assets_dict = json.loads(assets)
+        # Parse any string values to float lists
+        parsed_assets: dict[str, list[float]] = {}
+        for name, values in assets_dict.items():
+            if isinstance(values, str):
+                parsed_assets[name] = list(_parse_data_input(values))
+            else:
+                parsed_assets[name] = [float(v) for v in values]
+
+        result = _describe_allocation(
+            {k: list(v) for k, v in parsed_assets.items()},
+            context=context,
+            method=method,
+            target_volatility=target_volatility,
+        )
+        # Include disclaimer in output
+        return f"{result.narrative}\n\n⚠️ {result.disclaimer}"
+    except json.JSONDecodeError as e:
+        return f"Error parsing assets JSON: {str(e)}"
+    except (ValueError, TypeError) as e:
+        logger.warning("describe_allocation failed for context=%s: %s", context, e)
+        return f"Error analyzing allocation: {str(e)}"
 
 
 # =============================================================================
@@ -271,7 +625,8 @@ def wrap_for_semantic_output(
             try:
                 narrative: str = describe_series(data, context=context, output="text")
                 return narrative
-            except (ValueError, TypeError, RuntimeError) as e:
+            except (ValueError, TypeError) as e:
+                logger.warning("wrap_for_semantic_output failed for %s: %s", func.__name__, e)
                 return f"Error in semantic conversion: {e}. Original: {result}"
 
         return wrapper  # type: ignore
@@ -319,6 +674,7 @@ def create_semantic_tool(
             result: str = describe_series(data, context=ctx, output="text")
             return result
         except (ValueError, TypeError) as e:
+            logger.warning("create_semantic_tool %s failed: %s", name, e)
             return f"Error: {str(e)}"
 
     semantic_tool.__name__ = name
