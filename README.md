@@ -2,6 +2,10 @@
 
 <!-- mcp-name: io.github.Anarkitty1/semantic-frame -->
 
+[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=semantic-frame)
+[![PyPI version](https://img.shields.io/pypi/v/semantic-frame.svg)](https://pypi.org/project/semantic-frame/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **Token-efficient semantic compression for numerical data.**
 
 Semantic Frame converts raw numerical data (NumPy, Pandas, Polars) into natural language descriptions optimized for LLM consumption. Instead of sending thousands of data points to an AI agent, send a 50-word semantic summary.
@@ -44,6 +48,36 @@ Or with uv:
 ```bash
 uv add semantic-frame
 ```
+
+## 🤖 Claude Integration (MCP)
+
+Semantic Frame is available on the [official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=semantic-frame), enabling direct integration with Claude.
+
+**Claude Code CLI:**
+```bash
+claude mcp add semantic-frame
+```
+
+**Claude Desktop** - Add to your `claude_desktop_config.json`:
+
+macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "semantic-frame": {
+      "command": "uvx",
+      "args": ["--from", "semantic-frame[mcp]", "semantic-frame-mcp"]
+    }
+  }
+}
+```
+
+Once configured, Claude can use these tools:
+- `describe_data` - Analyze a single data series
+- `describe_batch` - Analyze multiple series at once
+- `describe_json` - Get structured JSON output
 
 ## Quick Start
 
