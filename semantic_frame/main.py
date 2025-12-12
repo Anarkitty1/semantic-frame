@@ -109,10 +109,12 @@ def _to_numpy(data: ArrayLike) -> np.ndarray:
                 ) from original_error
 
     if "polars" in module_name:
-        # Polars Series
+        # Polars Series - verify it has the expected interface
+        if not hasattr(data, "to_numpy"):
+            raise TypeError(f"Polars-like object missing 'to_numpy' method: {type(data).__name__}")
         try:
             return data.to_numpy()  # type: ignore
-        except Exception as e:
+        except (TypeError, ValueError, AttributeError) as e:
             raise TypeError(
                 f"Could not convert polars Series to numpy array: {e}. "
                 "Ensure the Series contains numeric data."
@@ -259,20 +261,22 @@ def describe_dataframe(
     column_results: dict[str, SemanticResult] = {}
     values_dict: dict[str, np.ndarray] = {}
 
-    # Detect Polars vs Pandas
+    # Detect Polars vs Pandas using module name and duck-typing
     module_name = type(df).__module__
+    is_polars = "polars" in module_name and hasattr(df, "columns")
 
-    if "polars" in module_name:
-        # Polars DataFrame
+    if is_polars:
+        # Polars DataFrame - verify expected interface
         for col_name in df.columns:
-            dtype = df[col_name].dtype
-            # Check if numeric (int, float types)
-            if dtype.is_numeric():  # type: ignore[union-attr]
+            col_series = df[col_name]
+            dtype = col_series.dtype
+            # Check if numeric (int, float types) - polars dtypes have is_numeric()
+            if hasattr(dtype, "is_numeric") and dtype.is_numeric():  # type: ignore[union-attr]
                 col_context = f"{context} - {col_name}" if context else col_name
-                values = df[col_name].to_numpy()
+                values = col_series.to_numpy()
                 values_dict[col_name] = values.astype(float)
                 result = describe_series(
-                    df[col_name],
+                    col_series,
                     context=col_context,
                     output="full",
                 )

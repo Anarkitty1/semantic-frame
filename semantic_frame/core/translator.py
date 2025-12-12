@@ -38,6 +38,8 @@ from semantic_frame.narrators.time_series import generate_time_series_narrative
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["analyze_series"]
+
 
 def analyze_series(
     values: np.ndarray,

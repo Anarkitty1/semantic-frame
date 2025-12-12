@@ -38,6 +38,20 @@ from semantic_frame.interfaces.json_schema import AnomalyInfo
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "calc_linear_slope",
+    "classify_trend",
+    "calc_volatility",
+    "detect_anomalies",
+    "classify_anomaly_state",
+    "assess_data_quality",
+    "calc_seasonality",
+    "calc_distribution_shape",
+    "detect_step_changes",
+    "calc_acceleration",
+    "classify_acceleration",
+]
+
 
 def calc_linear_slope(values: np.ndarray) -> float:
     """Calculate normalized linear regression slope.

@@ -161,7 +161,7 @@ def wrap_numeric_output(
                     }
                 return semantic_result
 
-            except Exception as e:
+            except (ValueError, TypeError) as e:
                 if passthrough_on_failure:
                     return result
                 raise ValueError(f"Semantic analysis failed: {e}") from e

@@ -120,7 +120,7 @@ def describe_data(data: str, context: str = "Data") -> str:
         values = _parse_data_input(data)
         result: str = describe_series(values, context=context, output="text")
         return result
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         return f"Error analyzing data: {str(e)}"
 
 
@@ -177,7 +177,7 @@ def describe_batch(
 
     except json.JSONDecodeError as e:
         return f"Error parsing datasets JSON: {str(e)}"
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         return f"Error analyzing batch data: {str(e)}"
 
 
@@ -200,7 +200,7 @@ def describe_json(data: str, context: str = "Data") -> str:
         values = _parse_data_input(data)
         result = describe_series(values, context=context, output="json")
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         return json.dumps({"error": str(e)})
 
 
@@ -271,7 +271,7 @@ def wrap_for_semantic_output(
             try:
                 narrative: str = describe_series(data, context=context, output="text")
                 return narrative
-            except Exception as e:
+            except (ValueError, TypeError, RuntimeError) as e:
                 return f"Error in semantic conversion: {e}. Original: {result}"
 
         return wrapper  # type: ignore
@@ -318,7 +318,7 @@ def create_semantic_tool(
             ctx = context or name.replace("_", " ").title()
             result: str = describe_series(data, context=ctx, output="text")
             return result
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             return f"Error: {str(e)}"
 
     semantic_tool.__name__ = name

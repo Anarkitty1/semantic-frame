@@ -21,6 +21,12 @@ from semantic_frame.core.enums import CorrelationState
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "classify_correlation",
+    "calc_correlation_matrix",
+    "identify_significant_correlations",
+]
+
 
 def classify_correlation(r_value: float) -> CorrelationState:
     """Classify correlation coefficient to CorrelationState.

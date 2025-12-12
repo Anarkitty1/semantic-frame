@@ -18,6 +18,24 @@ if TYPE_CHECKING:
 # Type alias for condition values
 Condition = Literal["baseline", "treatment"]
 
+# =============================================================================
+# API Pricing Configuration
+# =============================================================================
+# Anthropic Claude pricing per 1,000 tokens.
+# Last updated: December 2025
+#
+# IMPORTANT: Update these values when Anthropic changes pricing.
+# Current pricing: https://www.anthropic.com/pricing
+#
+# Model tiers (as of Dec 2025):
+#   - Haiku:  $0.00025 input, $0.00125 output (per 1K tokens)
+#   - Sonnet: $0.003 input, $0.015 output (per 1K tokens)
+#   - Opus:   $0.015 input, $0.075 output (per 1K tokens)
+#
+# Default to Sonnet pricing (most common for benchmarks)
+ANTHROPIC_INPUT_COST_PER_1K: float = 0.003  # USD per 1K input tokens
+ANTHROPIC_OUTPUT_COST_PER_1K: float = 0.015  # USD per 1K output tokens
+
 # Token counting - use tiktoken if available, fallback to approximation
 # Note: cl100k_base is the encoding used by GPT-4 and similar models.
 # While Anthropic has not published exact tokenizer details, cl100k_base
@@ -281,6 +299,9 @@ class CostMetrics:
     """API cost metrics.
 
     This dataclass is frozen (immutable) for thread safety and hashability.
+
+    Pricing constants are defined at module level (ANTHROPIC_INPUT_COST_PER_1K,
+    ANTHROPIC_OUTPUT_COST_PER_1K) for easy updates when Anthropic changes pricing.
     """
 
     input_tokens: int
@@ -288,16 +309,28 @@ class CostMetrics:
     total_tokens: int
     estimated_cost_usd: float
 
-    # Anthropic pricing (as of late 2025, adjust as needed)
-    INPUT_COST_PER_1K: float = 0.003  # Sonnet input
-    OUTPUT_COST_PER_1K: float = 0.015  # Sonnet output
-
     @classmethod
-    def compute(cls, input_tokens: int, output_tokens: int) -> CostMetrics:
-        """Compute cost metrics."""
+    def compute(
+        cls,
+        input_tokens: int,
+        output_tokens: int,
+        input_cost_per_1k: float = ANTHROPIC_INPUT_COST_PER_1K,
+        output_cost_per_1k: float = ANTHROPIC_OUTPUT_COST_PER_1K,
+    ) -> CostMetrics:
+        """Compute cost metrics.
+
+        Args:
+            input_tokens: Number of input tokens.
+            output_tokens: Number of output tokens.
+            input_cost_per_1k: Cost per 1K input tokens (defaults to Sonnet pricing).
+            output_cost_per_1k: Cost per 1K output tokens (defaults to Sonnet pricing).
+
+        Returns:
+            CostMetrics with computed values.
+        """
         total = input_tokens + output_tokens
-        cost = (input_tokens / 1000 * cls.INPUT_COST_PER_1K) + (
-            output_tokens / 1000 * cls.OUTPUT_COST_PER_1K
+        cost = (input_tokens / 1000 * input_cost_per_1k) + (
+            output_tokens / 1000 * output_cost_per_1k
         )
         return cls(
             input_tokens=input_tokens,
