@@ -88,11 +88,21 @@ semantic_frame/
 ├── interfaces/
 │   ├── json_schema.py   # Pydantic models (SemanticResult, AnomalyInfo, etc.)
 │   └── llm_templates.py # LangChain/agent integration helpers
-└── integrations/
-    ├── anthropic.py     # Native Anthropic Claude tool use (optional dep)
-    ├── langchain.py     # LangChain BaseTool wrapper (optional dep)
-    ├── crewai.py        # CrewAI tool decorator wrapper (optional dep)
-    └── mcp.py           # Model Context Protocol server (optional dep)
+├── integrations/
+│   ├── anthropic.py     # Native Anthropic Claude tool use (optional dep)
+│   ├── langchain.py     # LangChain BaseTool wrapper (optional dep)
+│   ├── crewai.py        # CrewAI tool decorator wrapper (optional dep)
+│   └── mcp.py           # Model Context Protocol server (optional dep)
+└── trading/             # Trading-specific analysis (v0.4.0)
+    ├── drawdown.py      # Equity curve drawdown analysis
+    ├── metrics.py       # Win rate, Sharpe, profit factor calculations
+    ├── rankings.py      # Multi-agent/strategy comparison
+    ├── anomalies.py     # Enhanced anomaly detection with severity
+    ├── windows.py       # Multi-timeframe trend alignment
+    ├── regime.py        # Market regime detection (bull/bear/sideways)
+    ├── allocation.py    # Portfolio allocation suggestions (educational)
+    ├── enums.py         # Trading-specific enums (DrawdownSeverity, etc.)
+    └── schemas.py       # Pydantic models for trading results
 ```
 
 ### Data Flow
@@ -116,6 +126,19 @@ semantic_frame/
    - `calc_correlation_matrix()` → pairwise Pearson/Spearman correlations
    - `identify_significant_correlations()` → filters by threshold (default 0.5)
 
+### Trading Module Data Flow
+
+The trading module (`semantic_frame.trading`) follows a similar pattern but with domain-specific analysis:
+
+1. **Input**: Raw equity curves, trade PnLs, or price arrays
+2. **Analysis**: Specialized functions (drawdown detection, regime classification, etc.)
+3. **Result**: Pydantic models (`DrawdownResult`, `TradingPerformanceResult`, etc.) with `.narrative`
+
+Each trading function returns a result object with:
+- `narrative`: Human-readable summary
+- Domain-specific metrics (max_drawdown, win_rate, regime_type, etc.)
+- Enums for categorical outputs (DrawdownSeverity, RegimeType, etc.)
+
 ### Key Design Decisions
 
 - **Enum thresholds are documented in enums.py docstrings** (e.g., RISING_SHARP = slope > 0.5)
@@ -123,29 +146,28 @@ semantic_frame/
 - **All scipy warnings are suppressed** to avoid noise from edge cases
 - **Infinite values are filtered with logging** (`translator.py:58-64`)
 - **Compression ratio = 1 - (output_tokens / input_tokens)**, clamped to [0, 1]
+- **Trading allocation is educational only**: Always includes disclaimer, not financial advice
 
 ## Testing Patterns
 
-Tests are organized to mirror the module structure:
-- `test_enums.py` - Enum value tests
+Tests mirror the module structure. Key test categories:
+
+**Core:**
 - `test_analyzers.py` - Math function unit tests
 - `test_correlations.py` - Correlation analysis tests
 - `test_translator.py` - Pipeline integration tests
 - `test_narrators.py` - Narrative generation tests
 - `test_integration.py` - End-to-end with various data types
-- `test_advanced_analyzers.py` - Step change detection and advanced analysis tests
-- `test_anthropic_integration.py` - Anthropic native tool use tests
-- `test_langchain_integration.py` - LangChain tool wrapper tests
-- `test_crewai_integration.py` - CrewAI tool wrapper tests
-- `test_mcp_integration.py` - MCP server integration tests
-- `test_benchmarks.py` - Benchmark pipeline integration tests
-- `test_benchmark_config.py` - Configuration validation tests
-- `test_benchmark_runner.py` - Runner orchestration tests
-- `test_benchmark_datasets.py` - Data generation tests
-- `test_benchmark_metrics.py` - Metric calculation tests
-- `test_benchmark_reporter.py` - Report generation tests
-- `test_benchmark_claude_client.py` - API client tests
-- `test_benchmark_tasks.py` - Task implementation tests
+- `test_property_based.py` - Hypothesis property-based tests
+
+**Trading Module:**
+- `test_trading_*.py` - Tests for drawdown, metrics, rankings, anomalies, windows, regime, allocation
+
+**Integrations:**
+- `test_anthropic_integration.py`, `test_langchain_integration.py`, `test_crewai_integration.py`, `test_mcp_integration.py`
+
+**Benchmarks:**
+- `test_benchmark_*.py` - Config, runner, datasets, metrics, reporter, tasks, visualizations
 
 ### Test Markers
 
@@ -160,12 +182,20 @@ uv run pytest
 uv run pytest -m slow
 ```
 
-When adding new analysis features:
+When adding new **core** analysis features:
 1. Add enum to `core/enums.py` with threshold docstring
 2. Add math function to `core/analyzers.py`
 3. Integrate in `core/translator.py`
 4. Update narrative in `narrators/time_series.py`
 5. Add tests for each layer
+
+When adding new **trading** features:
+1. Add enums to `trading/enums.py` (e.g., severity levels)
+2. Add Pydantic result models to `trading/schemas.py`
+3. Create analysis module `trading/<feature>.py` with `describe_<feature>()` function
+4. Export from `trading/__init__.py`
+5. Add MCP tool to `integrations/mcp.py` if needed
+6. Add tests in `tests/test_trading_<feature>.py`
 
 ## Benchmark Framework
 

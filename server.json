@@ -6,12 +6,12 @@
     "url": "https://github.com/Anarkitty1/semantic-frame",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.4.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "semantic-frame",
-      "version": "0.2.1",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       }

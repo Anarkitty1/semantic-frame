@@ -31,5 +31,52 @@ For Advanced Tool Use:
 
 from semantic_frame.main import describe_dataframe, describe_series
 
+# Re-export trading module functions for convenience
+from semantic_frame.trading import (
+    describe_allocation,
+    describe_anomalies,
+    describe_drawdown,
+    describe_rankings,
+    describe_regime,
+    describe_trading_performance,
+    describe_windows,
+)
+
 __version__ = "0.4.0"
-__all__ = ["describe_series", "describe_dataframe", "__version__"]
+__all__ = [
+    # Core functions
+    "describe_series",
+    "describe_dataframe",
+    # Trading functions (re-exported for convenience)
+    "describe_data",
+    "describe_anomalies",
+    "describe_windows",
+    "describe_regime",
+    "describe_drawdown",
+    "describe_trading_performance",
+    "describe_rankings",
+    "describe_allocation",
+    # Version
+    "__version__",
+]
+
+
+def describe_data(data: object, context: str = "Data") -> str:
+    """Analyze numerical data and return a semantic description.
+
+    This is a convenience wrapper around describe_series that accepts
+    native Python lists, NumPy arrays, or Pandas Series.
+
+    Args:
+        data: List of numbers, NumPy array, or Pandas Series
+        context: Label for the data (e.g., "Server Latency", "BTC Price")
+
+    Returns:
+        Natural language description of the data's patterns
+
+    Example:
+        >>> prices = [100, 102, 99, 500, 101, 98]
+        >>> describe_data(prices, context="Price")
+        "The Price data shows a flat/stationary pattern..."
+    """
+    return describe_series(data, context=context, output="text")
