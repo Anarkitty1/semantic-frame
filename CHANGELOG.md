@@ -5,6 +5,55 @@ All notable changes to Semantic Frame will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-12-12
+
+### Added
+
+#### Position Sizing & Portfolio Allocation (`describe_allocation`)
+Risk-based portfolio allocation with correlation-aware diversification analysis:
+
+- **Allocation Methods**:
+  - `equal_weight` - Simple equal allocation across assets
+  - `risk_parity` - Weight inversely proportional to volatility
+  - `min_variance` - Minimum variance portfolio optimization
+  - `target_vol` - Scale allocation to target volatility level
+- **Portfolio Metrics**:
+  - Expected return and volatility (annualized)
+  - Sharpe ratio
+  - Risk level classification: VERY_LOW, LOW, MODERATE, HIGH, VERY_HIGH
+- **Diversification Analysis**:
+  - Diversification score (0-1)
+  - Diversification level: POOR, LIMITED, MODERATE, GOOD, EXCELLENT
+  - Average pairwise correlation
+  - Top correlation insights with relationship descriptions
+- **Per-Asset Analysis**:
+  - Annualized return and volatility
+  - Sharpe ratio
+  - Suggested weight
+  - Contribution to portfolio risk
+- **Safety Features**:
+  - Required disclaimer on all outputs
+  - Educational/informational only - not financial advice
+
+Example output:
+```
+"Portfolio analysis for Crypto: Suggested allocation: BTC (45%), ETH (30%), SOL (25%).
+ Expected return: 85.2%, volatility: 42.1% (high risk).
+ Diversification: limited - assets highly correlated (avg correlation: 0.78).
+ BTC/ETH: highly correlated (move together) (r=0.92).
+ Risk parity approach balances risk contribution across assets.
+
+ ⚠️ This is educational analysis only, not financial advice."
+```
+
+#### MCP Tool for Allocation
+- `describe_allocation` - Portfolio allocation suggestions via MCP
+
+### Tests
+- Added 28 new tests for allocation module
+- Tests cover: allocation methods, risk levels, diversification, correlations, MCP integration
+- Total: **1,336 tests (214 trading module tests)**
+
 ## [0.3.2] - 2025-12-12
 
 ### Added

@@ -305,7 +305,11 @@ def _get_correlation_insights(
     pairs = []
     for i in range(n):
         for j in range(i + 1, n):
-            pairs.append((assets[i], assets[j], corr_matrix[i, j]))
+            corr = corr_matrix[i, j]
+            # Skip NaN correlations (can happen with zero variance assets)
+            if np.isnan(corr):
+                continue
+            pairs.append((assets[i], assets[j], corr))
 
     # Sort by absolute correlation
     pairs.sort(key=lambda x: abs(x[2]), reverse=True)
@@ -326,7 +330,7 @@ def _get_correlation_insights(
             CorrelationInsight(
                 asset_1=asset_1,
                 asset_2=asset_2,
-                correlation=round(corr, 3),
+                correlation=round(float(corr), 3),
                 relationship=relationship,
             )
         )
@@ -514,7 +518,10 @@ def describe_allocation(
     # Average correlation (off-diagonal)
     if n_assets > 1:
         mask = ~np.eye(n_assets, dtype=bool)
-        avg_corr = float(np.mean(corr_matrix[mask]))
+        off_diag = corr_matrix[mask]
+        # Filter out NaN values
+        valid_corrs = off_diag[~np.isnan(off_diag)]
+        avg_corr = float(np.mean(valid_corrs)) if len(valid_corrs) > 0 else 0.0
     else:
         avg_corr = 1.0
 

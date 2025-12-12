@@ -395,49 +395,48 @@ class TestParseDataInputEdgeCases:
     """Tests for _parse_data_input error paths."""
 
     def test_invalid_json_array_falls_through(self) -> None:
-        """Test that invalid JSON array falls through to other parsers.
+        """Test that invalid JSON array provides specific error message.
 
         Covers lines 63-64: JSONDecodeError/ValueError exception handling.
         """
         from semantic_frame.integrations.mcp import _parse_data_input
 
-        # Starts with [ but is not valid JSON - should try CSV next
-        # "[1, 2, abc]" would fail JSON parsing due to "abc"
-        # But since it has commas, CSV parsing will also fail on "abc"
-        with pytest.raises(ValueError, match="Could not parse"):
+        # Starts with [ but is not valid JSON - should give specific error
+        # "[1, 2, abc]" fails JSON parsing due to "abc"
+        with pytest.raises(ValueError, match="Input appears to be JSON array but failed to parse"):
             _parse_data_input("[1, 2, abc]")
 
     def test_csv_with_invalid_values_falls_through(self) -> None:
-        """Test that CSV with non-numeric values falls through.
+        """Test that CSV with non-numeric values provides specific error.
 
         Covers lines 70-71: ValueError exception handling in CSV parsing.
         """
         from semantic_frame.integrations.mcp import _parse_data_input
 
-        # Has commas but contains non-numeric values
-        with pytest.raises(ValueError, match="Could not parse"):
+        # Has commas but contains non-numeric values - should give specific error
+        with pytest.raises(ValueError, match="Non-numeric value.*in CSV input"):
             _parse_data_input("hello, world, test")
 
     def test_newline_with_invalid_values_falls_through(self) -> None:
-        """Test that newline-separated with non-numeric values falls through.
+        """Test that newline-separated with non-numeric values provides specific error.
 
         Covers lines 77-78: ValueError exception handling in newline parsing.
         """
         from semantic_frame.integrations.mcp import _parse_data_input
 
-        # Has newlines but contains non-numeric values, no commas
-        with pytest.raises(ValueError, match="Could not parse"):
+        # Has newlines but contains non-numeric values, no commas - specific error
+        with pytest.raises(ValueError, match="Non-numeric value.*in newline-separated input"):
             _parse_data_input("hello\nworld\ntest")
 
     def test_json_array_with_non_numeric_values(self) -> None:
-        """Test JSON array with strings instead of numbers.
+        """Test JSON array with strings instead of numbers provides specific error.
 
         Covers line 62-64: ValueError in float conversion.
         """
         from semantic_frame.integrations.mcp import _parse_data_input
 
-        # Valid JSON but can't convert to floats
-        with pytest.raises(ValueError, match="Could not parse"):
+        # Valid JSON but can't convert to floats - specific error
+        with pytest.raises(ValueError, match="JSON array parsed but contains non-numeric values"):
             _parse_data_input('["a", "b", "c"]')
 
 
@@ -576,7 +575,8 @@ class TestWrapForSemanticOutputEdgeCases:
     def test_wrap_handles_describe_series_exception(self) -> None:
         """Test wrapper exception handling when describe_series raises.
 
-        Covers lines 274-275: Exception path in semantic conversion.
+        Covers lines 628-630: Exception path in semantic conversion.
+        The wrapper only catches ValueError and TypeError (typical describe_series errors).
         """
         from unittest.mock import patch
 
@@ -585,8 +585,9 @@ class TestWrapForSemanticOutputEdgeCases:
             return [1.0, 2.0, 3.0]
 
         # Mock describe_series at the source (imported inside the wrapper)
+        # Using ValueError as that's what the wrapper catches
         with patch("semantic_frame.describe_series") as mock_describe:
-            mock_describe.side_effect = RuntimeError("Mock analysis failure")
+            mock_describe.side_effect = ValueError("Mock analysis failure")
             result = get_data()
 
         assert "Error in semantic conversion" in result
