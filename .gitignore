@@ -42,6 +42,11 @@ benchmarks/results/visualizations/
 .env
 .env.*
 
+# MCP Registry Publisher
+mcp-publisher
+.mcpregistry_github_token
+.mcpregistry_registry_token
+
 # macOS
 .DS_Store
 
@@ -51,3 +56,4 @@ pr.md
 compass_artifact_*.md
 semantic_frame_benchmark_methodology.md
 .hypothesis/
+docs/claude_code_cli_research.md
